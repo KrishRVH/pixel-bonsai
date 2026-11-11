@@ -1,9 +1,9 @@
-"""A pixel bonsai for the foot of the nav column that grows with the captain's Claude token usage.
+"""A pixel bonsai, in its own pane under the nav column, that grows with the captain's Claude token usage.
 
   growth(tokens)  0..1: (tokens / MATURE) ** 0.4, quick while young and slower with age; at the fleet's autumn 2026
                   pace (about 0.3B tokens a day) it reaches full size in about two years
   pixels(g)       {(x, y): color} for the tree at growth g; it is one tree at every size, so later growth only adds
-  rows(px)        the pixels as terminal lines of half blocks, two pixels to a cell
+  rows(px, size)  the pixels as terminal lines of half blocks, two pixels to a cell, each pixel size times larger
   tokens()        every token in the Claude transcripts (input, cache reads and writes, output), each API message
                   once; each day's highest count is kept, so transcripts Claude prunes for age (always from past
                   days) never shrink the tree
@@ -171,16 +171,17 @@ def pixels(g):
     return px
 
 
-def rows(px, rgb=None):
+def rows(px, rgb=None, size=1):
     """Half-block lines: each cell shows two stacked pixels, the upper as the glyph's color, the lower as its
-    background (or the glyph's color when only the lower is set). rgb(hex, background) gives an escape code."""
+    background (or the glyph's color when only the lower is set), each pixel drawn size by size.
+    rgb(hex, background) gives an escape code."""
     rgb = rgb or (lambda c, bg: "\x1b[%d;2;%d;%d;%dm" % ((48 if bg else 38,) + tuple(
         int(c[i:i + 2], 16) for i in (0, 2, 4))))
     out = []
-    for r in range(ROWS):
+    for r in range(ROWS * size):
         line = ""
-        for x in range(W):
-            top, low = px.get((x, 2 * r)), px.get((x, 2 * r + 1))
+        for x in range(W * size):
+            top, low = px.get((x // size, 2 * r // size)), px.get((x // size, (2 * r + 1) // size))
             if top and low:
                 line += rgb(top, False) + rgb(low, True) + "▀\x1b[0m" if top != low else rgb(top, False) + "█\x1b[0m"
             elif top or low:
