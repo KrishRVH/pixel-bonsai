@@ -1,12 +1,13 @@
-"""A pixel bonsai, in its own pane under the nav column, that grows with the captain's Claude token usage.
+"""The day's pixel bonsai, in its own pane under the nav column: it sprouts at midnight and grows with the captain's
+Claude tokens that day. The pane switches to the lifetime tree (elder.py), which shares its drawing and counting.
 
-  growth(tokens)  0..1: (tokens / MATURE) ** 0.4, quick while young and slower with age; at the fleet's autumn 2026
-                  pace (about 0.3B tokens a day) it reaches full size in about two years
+  growth(tokens)  0..1: (tokens / DAY) ** 0.5, quick early in the day; an autumn 2026 median day (about 0.23B
+                  tokens) shapes a young tree and a busy one (1B) grows it in full
   pixels(g)       {(x, y): color} for the tree at growth g; it is one tree at every size, so later growth only adds
-  rows(px, size)  the pixels as terminal lines of half blocks, two pixels to a cell, each pixel size times larger
-  tokens()        every token in the Claude transcripts (input, cache reads and writes, output), each API message
-                  once; each day's highest count is kept, so transcripts Claude prunes for age (always from past
-                  days) never shrink the tree
+  rows(px, ...)   a canvas's pixels as terminal lines of half blocks, two pixels to a cell, each pixel size times larger
+  today()         the tokens since local midnight (input, cache reads and writes, output), each API message once
+  tokens()        every token in the Claude transcripts, each API message once; each day's highest count is kept, so
+                  transcripts Claude prunes for age (always from past days) never shrink the lifetime tree
 Python 3.9, standard library.
 """
 import glob
@@ -14,10 +15,11 @@ import json
 import math
 import os
 import random
+import time
 
 W, H = 34, 30            # the canvas in pixels: 34 cells wide, 15 rows tall
 ROWS = H // 2
-MATURE = 250e9           # tokens for a full-grown tree
+DAY = 1e9                # tokens for a full-grown tree in one day
 SEED = 5                 # which tree: the same one at every size
 TRUNK_TOP = 0.5          # growth at which the trunk reaches its full height
 BASE_Y, APEX_Y = 24, 3   # where the trunk meets the soil, and its full height
@@ -32,7 +34,7 @@ STAGES = ((0.08, "sprout"), (0.18, "seedling"), (0.3, "sapling"), (0.45, "young 
 
 
 def growth(tokens):
-    return max(0.0, min(1.0, (max(0.0, tokens) / MATURE) ** 0.4))
+    return max(0.0, min(1.0, (max(0.0, tokens) / DAY) ** 0.5))
 
 
 def stage(g):
@@ -171,16 +173,16 @@ def pixels(g):
     return px
 
 
-def rows(px, rgb=None, size=1):
-    """Half-block lines: each cell shows two stacked pixels, the upper as the glyph's color, the lower as its
-    background (or the glyph's color when only the lower is set), each pixel drawn size by size.
+def rows(px, rgb=None, size=1, w=W, h=H):
+    """Half-block lines for a w by h canvas: each cell shows two stacked pixels, the upper as the glyph's color, the
+    lower as its background (or the glyph's color when only the lower is set), each pixel drawn size by size.
     rgb(hex, background) gives an escape code."""
     rgb = rgb or (lambda c, bg: "\x1b[%d;2;%d;%d;%dm" % ((48 if bg else 38,) + tuple(
         int(c[i:i + 2], 16) for i in (0, 2, 4))))
     out = []
-    for r in range(ROWS * size):
+    for r in range(h // 2 * size):
         line = ""
-        for x in range(W * size):
+        for x in range(w * size):
             top, low = px.get((x // size, 2 * r // size)), px.get((x // size, (2 * r + 1) // size))
             if top and low:
                 line += rgb(top, False) + rgb(low, True) + "▀\x1b[0m" if top != low else rgb(top, False) + "█\x1b[0m"
@@ -206,10 +208,15 @@ def stored():
         return 0
 
 
-def tokens():
-    """Count every transcript again, keep each day's highest count in the store, and return the total."""
-    days, seen = {}, set()
-    for path in glob.glob(os.path.expanduser("~/.claude*/projects/**/*.jsonl"), recursive=True):
+def transcripts():
+    return glob.glob(os.path.expanduser("~/.claude*/projects/**/*.jsonl"), recursive=True)
+
+
+def usages(paths):
+    """(UTC timestamp, tokens) for each API message in these transcripts, once each: a message repeated in a line or
+    in a resumed copy counts once."""
+    seen = set()
+    for path in paths:
         try:
             with open(path, "rb") as f:
                 for line in f:
@@ -225,11 +232,31 @@ def tokens():
                         continue
                     seen.add(key)
                     used = message["usage"]
-                    day = (entry.get("timestamp") or "")[:10]
-                    days[day] = days.get(day, 0) + sum(used.get(k) or 0 for k in (
+                    yield entry.get("timestamp") or "", sum(used.get(k) or 0 for k in (
                         "input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"))
         except OSError:
             continue
+
+
+def written_since(path, moment):
+    try:
+        return os.path.getmtime(path) >= moment
+    except OSError:
+        return False
+
+
+def today(now=None):
+    """The tokens since local midnight, read from the transcripts written since then."""
+    midnight = time.mktime(time.localtime(time.time() if now is None else now)[:3] + (0, 0, 0, 0, 0, -1))
+    since = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(midnight))  # transcripts stamp UTC, in this form
+    return sum(n for at, n in usages(p for p in transcripts() if written_since(p, midnight)) if at >= since)
+
+
+def tokens():
+    """Count every transcript again, keep each UTC day's highest count in the store, and return the total."""
+    days = {}
+    for at, n in usages(transcripts()):
+        days[at[:10]] = days.get(at[:10], 0) + n
     path = store_path()
     try:
         with open(path, encoding="utf-8") as f:
