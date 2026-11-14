@@ -5,9 +5,11 @@ Claude tokens that day. The pane switches to the lifetime tree (elder.py), which
                   tokens) shapes a young tree and a busy one (1B) grows it in full
   pixels(g)       {(x, y): color} for the tree at growth g; it is one tree at every size, so later growth only adds
   rows(px, ...)   a canvas's pixels as terminal lines of half blocks, two pixels to a cell, each pixel size times larger
-  today()         the tokens since local midnight (input, cache reads and writes, output), each API message once
-  tokens()        every token in the Claude transcripts, each API message once; each day's highest count is kept, so
-                  transcripts Claude prunes for age (always from past days) never shrink the lifetime tree
+  Ledger          the transcripts' tokens (input, cache reads and writes, output), each API message once, read
+                  incrementally: an update reads only what was appended since the last
+  today()         the tokens since local midnight
+  tokens()        every token counted; each day's highest count is kept, so transcripts Claude prunes for age
+                  (always from past days) never shrink the lifetime tree
 Python 3.9, standard library.
 """
 import glob
@@ -212,51 +214,88 @@ def transcripts():
     return glob.glob(os.path.expanduser("~/.claude*/projects/**/*.jsonl"), recursive=True)
 
 
-def usages(paths):
-    """(UTC timestamp, tokens) for each API message in these transcripts, once each: a message repeated in a line or
-    in a resumed copy counts once."""
-    seen = set()
-    for path in paths:
+BLOCK = 1 << 20           # bytes read at a time: larger blocks raise the peak, not the speed
+USAGE_KEYS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")
+
+
+class Ledger:
+    """Every API message's tokens in the transcripts, each message once (a message repeated in a line or in a resumed
+    copy counts once), by UTC minute. Transcripts only grow, so each update reads just the bytes appended since the
+    last one: the bonsai pane keeps one ledger for its life, and a recount costs what was written since, not the
+    gigabytes of history. A transcript Claude prunes keeps its count here; a replaced one is read again, which the
+    message keys make harmless."""
+
+    def __init__(self):
+        self.read = {}       # path -> (inode, bytes read up to the last whole line)
+        self.seen = set()    # hash of (message id, request id), which holds a few MB for years of messages
+        self.minutes = {}    # "YYYY-MM-DDTHH:MM" (UTC) -> tokens
+
+    def update(self, paths=None):
+        paths = transcripts() if paths is None else paths
+        for path in paths:
+            try:
+                st = os.stat(path)
+                inode, at = self.read.get(path, (st.st_ino, 0))
+                if inode != st.st_ino or st.st_size < at:
+                    at = 0  # replaced or rewritten: read it again
+                with open(path, "rb") as f:
+                    f.seek(at)
+                    rest = b""
+                    while at + len(rest) < st.st_size:  # in blocks, so a transcript of hundreds of MB stays small
+                        block = rest + f.read(min(BLOCK, st.st_size - at - len(rest)))
+                        end = block.rfind(b"\n") + 1  # a line still being written waits for the next update
+                        if not end and len(block) == len(rest):
+                            break
+                        for line in block[:end].split(b"\n"):
+                            self.add(line)
+                        at, rest = at + end, block[end:]
+            except OSError:
+                continue
+            self.read[path] = (st.st_ino, at)
+        return self
+
+    def add(self, line):
+        if b'"usage"' not in line or b'"assistant"' not in line:
+            return
         try:
-            with open(path, "rb") as f:
-                for line in f:
-                    if b'"usage"' not in line or b'"assistant"' not in line:
-                        continue
-                    try:
-                        entry = json.loads(line)
-                    except ValueError:
-                        continue
-                    message = entry.get("message") or {}
-                    key = (message.get("id"), entry.get("requestId"))
-                    if not key[0] or key in seen or not isinstance(message.get("usage"), dict):
-                        continue
-                    seen.add(key)
-                    used = message["usage"]
-                    yield entry.get("timestamp") or "", sum(used.get(k) or 0 for k in (
-                        "input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens"))
-        except OSError:
-            continue
+            entry = json.loads(line)
+        except ValueError:
+            return
+        message = entry.get("message") or {}
+        used = message.get("usage")
+        key = hash((message.get("id"), entry.get("requestId")))
+        if not message.get("id") or key in self.seen or not isinstance(used, dict):
+            return
+        self.seen.add(key)
+        minute = (entry.get("timestamp") or "")[:16]
+        self.minutes[minute] = self.minutes.get(minute, 0) + sum(used.get(k) or 0 for k in USAGE_KEYS)
+
+    def since(self, stamp):
+        """Tokens from this UTC stamp ("YYYY-MM-DDTHH:MM:SS", on a whole minute) on."""
+        return sum(n for minute, n in self.minutes.items() if minute >= stamp[:16])
+
+    def days(self):
+        out = {}
+        for minute, n in self.minutes.items():
+            out[minute[:10]] = out.get(minute[:10], 0) + n
+        return out
 
 
-def written_since(path, moment):
-    try:
-        return os.path.getmtime(path) >= moment
-    except OSError:
-        return False
-
-
-def today(now=None):
-    """The tokens since local midnight, read from the transcripts written since then."""
+def midnight_utc(now=None):
+    """Local midnight today as the UTC stamp transcripts use."""
     midnight = time.mktime(time.localtime(time.time() if now is None else now)[:3] + (0, 0, 0, 0, 0, -1))
-    since = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(midnight))  # transcripts stamp UTC, in this form
-    return sum(n for at, n in usages(p for p in transcripts() if written_since(p, midnight)) if at >= since)
+    return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(midnight))
 
 
-def tokens():
-    """Count every transcript again, keep each UTC day's highest count in the store, and return the total."""
-    days = {}
-    for at, n in usages(transcripts()):
-        days[at[:10]] = days.get(at[:10], 0) + n
+def today(now=None, ledger=None):
+    """The tokens since local midnight."""
+    return (ledger or Ledger().update()).since(midnight_utc(now))
+
+
+def tokens(ledger=None):
+    """Every token counted, with each UTC day's highest count kept in the store, so transcripts Claude prunes for age
+    never shrink the lifetime tree; the total."""
+    days = (ledger or Ledger().update()).days()
     path = store_path()
     try:
         with open(path, encoding="utf-8") as f:
