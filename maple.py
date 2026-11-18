@@ -6,9 +6,11 @@ smooth grey trunk with a buttressed nebari, in an ivory pot. The interface every
   SIGNATURE    colors that mark it: every frame from "young tree" on holds one at scale 0.6, no other variety draws one
   pixels(g, scale=1.0)   {(x, y): "rrggbb"} for age g in [0, 1] on a canvas of art.size(scale), the same every call
 
-The tree is a trunk, the branches that carry its pads of foliage (PADS), and the ground it stands on. Growth is read
-from stage names: a pad appears at its stage and grows for a while, the wire is on between two stages. Foliage is lit
-on its upper left; a larger scale adds per-pixel leaf glyphs, bark streaks and finer twigs rather than bigger blocks.
+The tree is a trunk, the grey limbs that carry its pads of foliage (PADS), and the ground it stands on. Growth is read
+from stage names: a pad appears at its stage and grows for a while, the wire is on between two stages. The crown is
+tiers of pads with sky and limbs showing between them (WINDOWS) and, from "ramified", a lacy edge of twigs that fills
+out with age (LACE). Foliage is lit on its upper left; a larger scale adds per-pixel leaf glyphs, bark streaks, finer
+twigs and holes in the pads rather than bigger blocks.
 """
 import math
 
@@ -27,7 +29,7 @@ POT = ("a89f88", "cfc6ac", "ebe3cc", "faf5e6")               # ivory glaze
 SOIL = ("2b1f19", "3d2c22", "57402f")
 MOSS = ("2f5a2a", "4f8a38", "7cb450", "a8d878")
 GRASS = ("3f6e28", "6e9c38", "a8cc58")
-STONE = ("4c5461", "6c7684", "909aa8")
+STONE = ("3a4252", "56627a", "7c8aa4", "a4b0c8")
 DEADWOOD = ("a39b89", "d8cfba", "f0e8d4")
 STAND = ("3a281c", "5a3e2a", "7e5a3c", "a07a52")
 PLASTIC = ("2a2f3a", "454e60", "6a7690", "8a96b0")
@@ -38,21 +40,33 @@ BASE, FULL = (24.0, 22.6), 15.0              # the trunk's foot on the soil and 
 TRUNK = ((0, 0), (0.2, 1.6), (0.4, -1.2), (0.6, -2.6), (0.8, -1.0), (1, 1.5))   # share of height, sideways offset
 HEIGHT = (("sprout", 3), ("seedling", 6), ("sapling", 9), ("whip", 14), ("young tree", 14.5), ("first branches", 15),
           ("shaped", FULL))
-WIDTH = (("sprout", 0.9), ("young tree", 1.7), ("first branches", 2.0), ("first wiring", 2.4),
+WIDTH = (("sprout", 0.6), ("young tree", 1.7), ("first branches", 2.0), ("first wiring", 2.4),
          ("thickening trunk", 3.8), ("first styling", 4.2), ("shaped", 4.6), ("ramified", 4.7), ("mature", 5.6),
          ("old", 5.9), ("ancient", 6.6))
 BEND = (("young tree", 0.25), ("first wiring", 1.0))
 SPREAD = (("young tree", 0.5), ("shaped", 0.8), ("ramified", 0.9), ("venerable", 1.0))   # how many tones a pad spans
-GAPS = (("refined", 0.5), ("old", 0.8))                      # sky showing through pads
+GAPS = (("refined", 0.5), ("old", 0.8))                      # holes in the pads, on a canvas above scale 1.4
 MOTTLE = (("mature", 0.22), ("old", 0.3))                    # pale patches on the bark
-PADS = (  # where it leaves the trunk (a share of its height), the pad's final centre, radius, and when it appears
-    (1.00, 24.5, 4.0, 4.6, "young tree"), (0.58, 33.5, 11.0, 4.6, "young tree"), (0.52, 15.5, 11.4, 4.6, "young tree"),
-    (0.82, 18.0, 7.4, 4.8, "first branches"), (0.78, 31.0, 7.0, 4.8, "first branches"),
-    (0.30, 17.0, 14.8, 4.0, "first styling"), (0.25, 31.0, 15.2, 4.2, "first styling"),
-    (0.72, 24.0, 8.6, 3.8, "shaped"),
-    (0.50, 12.0, 10.6, 3.4, "layered pads"), (0.55, 36.5, 10.4, 3.4, "layered pads"),
-    (0.40, 12.5, 14.4, 2.8, "layered pads"), (0.42, 36.0, 14.2, 2.8, "layered pads"))
-NODES = ((5.0, "seedling"), (8.5, "sapling"), (11.5, "whip"), (14.0, "whip"))   # leaf pairs: height on the stem, from
+PADS = (  # parent limb (-1 the trunk), the share along it where this one leaves, the pad's final centre and radius,
+          # and the stage it appears at
+    (-1, 1.00, 24.5, 4.2, 4.2, "young tree"), (-1, 0.58, 33.5, 11.0, 4.4, "young tree"),
+    (-1, 0.52, 15.5, 11.4, 4.4, "young tree"),
+    (-1, 0.82, 18.0, 7.4, 4.4, "first branches"), (-1, 0.78, 31.0, 7.0, 4.4, "first branches"),
+    (-1, 0.30, 17.0, 14.8, 3.8, "first styling"), (-1, 0.25, 31.0, 15.2, 4.0, "first styling"),
+    (-1, 0.72, 24.0, 9.2, 3.6, "shaped"),
+    (2, 0.6, 10.5, 8.2, 3.2, "layered pads"), (1, 0.6, 38.0, 7.8, 3.2, "layered pads"),
+    (2, 0.6, 9.0, 15.2, 3.2, "layered pads"), (1, 0.6, 39.5, 15.0, 3.2, "layered pads"))
+WINDOWS = (  # sky showing between the tiers of the crown, with a limb in it: centre, radii, and the stage it opens at
+    (16.5, 9.6, 2.8, 0.9, "layered pads"), (31.5, 9.2, 2.8, 0.9, "layered pads"),
+    (14.5, 13.4, 3.0, 0.9, "refined"), (33.5, 13.2, 3.0, 0.9, "refined"),
+    (21.2, 5.6, 1.0, 1.6, "mature"), (28.4, 5.2, 1.0, 1.6, "mature"))
+ROOTS = (  # roots over the soil and the stone from the trunk's foot: their points, and the width where they leave it
+    ([(25.4, 20.4), (26.6, 18.2), (28.0, 18.4), (28.2, 20.4), (28.2, 22.6)], 1.7),
+    ([(25.4, 20.2), (27.4, 17.8), (29.8, 17.4), (31.0, 19.4), (31.2, 22.6)], 1.7),
+    ([(23.2, 21.6), (20.0, 22.0), (17.4, 22.8)], 1.6), ([(23.6, 21.9), (21.2, 22.5), (19.8, 23.1)], 1.4))
+LACE = (("ramified", 0.4), ("refined", 0.5), ("established", 0.65), ("mature", 0.8))   # the share of twigs grown
+TINT = (("ramified", 0.02), ("refined", 0.05), ("mature", 0.07), ("venerable", 0.1))   # gold creeps in with age
+NODES = ((4.2, "seedling"), (8.0, "sapling"), (11.8, "whip"))   # leaf pairs: height on the stem, from
 FALLEN = ((17.0, 21.6, 0.35, 0), (19.8, 21.9, 0.7, 1), (29.0, 21.0, 0.5, 0), (31.2, 21.8, 0.3, 2),
           (10.8, 27.0, 0.65, 1), (35.4, 27.2, 0.4, 0))   # x, y, tone and glyph of a leaf lying on the moss and stand
 DRIFT = ((38.5, 9.0, 0.7, 0), (42.5, 15.0, 0.4, 1), (35.5, 20.0, 0.8, 0), (8.5, 19.0, 0.6, 1), (4.5, 10.5, 0.45, 0),
@@ -62,6 +76,8 @@ STARS = {  # palmate leaf glyphs by width in pixels, each with five lobes
     3: ((".#.", "###", "#.#"), ("#.#", "###", ".#."), ("#.#", ".#.", "#.#"), (".#.", "###", ".#.")),
     5: ((".#.#.", ".###.", ".###.", "#.#.#", "..#.."), ("..#..", "#.#.#", ".###.", ".###.", ".#.#."),
         ("..#..", ".###.", "#####", ".###.", ".#.#."))}
+TUFTS = (   # the pixels of a twig-tip tuft on a small canvas, as offsets, the first alone below scale 0.8
+    ((0, 0), (1, 0)), ((0, 0), (0, -1)), ((0, 0), (-1, -1)), ((0, 0), (-1, 0)), ((0, 0), (1, -1)))
 BAYER = ((0, 8, 2, 10), (12, 4, 14, 6), (3, 11, 1, 9), (15, 7, 13, 5))
 
 
@@ -91,6 +107,17 @@ def leaf(c, x, y, level, green=0.0, kind=0, jitter=0.25, heart=0.0):
     star(c, math.floor(x * c.scale), math.floor(y * c.scale), size, level, green, kind, jitter, heart)
 
 
+
+def tuft(c, x, y, level, green, kind):
+    """The leaves at a twig's tip: a pixel or two on a small canvas, a palmate glyph on a larger one."""
+    if c.scale >= 1.4:
+        leaf(c, x, y, level, green, kind)
+        return
+    i, j = c.at(x, y)
+    for di, dj in TUFTS[kind % len(TUFTS)][:1 if c.scale < 0.8 else 2]:
+        c.put(i + di, j + dj, leaf_color(i + di, j + dj, level, green))
+
+
 def lump(c, cx, cy, rx, ry, level, green, spread, holes, salt):
     """A rounded clump of leaves lit on its upper left, level its mean tone; returns {(i, j): level}."""
     cover = {}
@@ -113,7 +140,7 @@ def pad(c, cx, cy, r, level, green, spread, gaps, salt):
     it; returns {(i, j): level}."""
     rx, ry = r, r * 0.58
     holes = [(cx + rx * (noise(salt, 20 + k) - 0.5) * 1.3, cy + ry * (noise(salt, 30 + k) - 0.3) * 0.8,
-              0.8 + 0.4 * noise(salt, 40 + k)) for k in range(round(gaps * 4))]
+              0.8 + 0.4 * noise(salt, 40 + k)) for k in range(round(gaps * 4 * (c.scale >= 1.4)))]
     clumps = [(0.0, 0.1 * ry, 0.8 * rx, 0.75 * ry)]
     for k in range(8):
         a = 6.283 * (k + 0.6 * noise(salt, k)) / 8
@@ -161,13 +188,14 @@ def leaves(c, cover, green, salt):
             star(c, ci, cj, size, lv, green, int(noise(i, j, salt + 4) ** 2 * 3), 0.1)
 
 
-def twigs(r, salt):
-    """The ends of fine twigs fanning up and out from a pad's heart past its rim, relative to the heart."""
+def spokes(r, salt):
+    """Where the fine twigs of a pad of radius r end, relative to its heart: a few fan out over its top and sides
+    past the rim."""
     out = []
-    for k in range(5):
-        a = -3.14 + 0.78 * k + 0.2 * noise(salt, k)
-        far = r * (1.05 + 0.2 * noise(salt, k + 9)) + 1.2
-        out.append((math.cos(a) * far, math.sin(a) * far * 0.62))
+    for k in range(6):
+        a = -3.3 + 0.7 * k + 0.25 * noise(salt, k)
+        far = 1.4 + 1.8 * noise(salt, k + 9)
+        out.append((math.cos(a) * (r + far), math.sin(a) * (r * 0.58 + far * 0.8)))
     return out
 
 
@@ -239,6 +267,14 @@ def pot(c, g):
         c.stroke([(23.6, 22.1), (26.2, 22.4)], 0.9, 0.5, (SAMARA,))
 
 
+def root(c, path, w0, w1, salt):
+    """A root lying over the soil, grey and lit with a shadow under it, kept above the pot's rim."""
+    ghost = art.Canvas(c.scale)
+    ghost.stroke([(x, y + 0.7) for x, y in path], w0, w1, (BARK[0],))
+    ghost.stroke(path, w0, w1, BARK[2:], salt=salt)
+    c.px.update({p: color for p, color in ghost.px.items() if p[1] < 23 * c.scale})
+
+
 def ground(c, g):
     """What lies on the soil: moss, a stone with roots clasping it, the nebari, then the stand and its accent, and
     the fallen leaves."""
@@ -247,11 +283,10 @@ def ground(c, g):
     if during(g, "established"):
         for x, rx in ((17.5, 2.6), (21, 2.0), (28, 2.4), (31, 3.0)):
             c.blob(x, 22.4, rx, 1.2, MOSS, jitter=0.6, salt=int(x), where=lambda x, y: y < 23.3)
-        c.blob(29.8, 21.6, 3.4, 1.8, STONE, jitter=0.4, where=lambda x, y: y < 23.3)
-        for side, reach in ((-1, 7.5), (-1, 4.5), (1, 3.5)):
-            bark(c, [(BASE[0], 21.6), (BASE[0] + side * reach * 0.5, 22.0), (BASE[0] + side * reach, 22.7)],
-                 1.9, 0.5, 0.0, int(reach))
-        bark(c, [(25.4, 21.4), (27.2, 20.9), (29.8, 20.7), (32.2, 22.3)], 1.9, 0.7, 0.0, 9)
+        rock = c.blob(29.4, 20.4, 3.4, 3.0, STONE, jitter=0.3, lump=0.08, salt=5, where=lambda x, y: y < 23.3)
+        c.scatter({p: s for p, s in rock.items() if s > 0.6}, MOSS[1:], 0.25, salt=6)
+        for n, (points, w) in enumerate(ROOTS):
+            root(c, art.spline(points, 4), w, 0.6, n)
     elif during(g, "thickening trunk"):
         c.blob(BASE[0], 22.0, 3.2, 1.3, BARK[1:4], where=lambda x, y: y < 23.2)
     if during(g, "show tree"):
@@ -272,46 +307,70 @@ def shoot(c):
     c.stroke([(27.1, 20.8), (28.4, 21.9)], 1.0, 0.5, SPRING)
 
 
+def blade(c, ci, cj, size, blush):
+    """A small palmate leaf of a young plant centered on pixel (ci, cj): crimson at its lobes, green at its heart."""
+    half = size // 2
+    for dj, row in enumerate(STARS[size][0]):
+        for di, ch in enumerate(row):
+            if ch == "#":
+                lit = ((di - half) * LIGHT[0] + (dj - half) * LIGHT[1]) / max(half, 1)
+                i, j = ci + di - half, cj + dj - half
+                if abs(di - half) + abs(dj - half) <= (size > 3) and size > 1:
+                    c.put(i, j, tone(SPRING, 0.55 + 0.2 * lit, 0.1, noise(i, j)))
+                else:
+                    c.put(i, j, tone(LEAF, 0.45 + 0.12 * lit + 0.12 * blush, 0.1, noise(i, j)))
+
+
 def stem(c, g, path, top):
-    """A seedling's seed leaves and staggered pairs of true leaves along its stem, before it has a crown."""
-    for h, born in NODES:
+    """A seedling's seed leaves and the opposite pairs of true leaves along its slender stem, each leaf on a short
+    stalk and a tiny palmate shape where the scale allows."""
+    size = 1 if c.scale < 0.8 else 3 if c.scale < 1.6 else 5
+    stalk = size // 2
+    for n, (h, born) in enumerate(NODES):
         if g >= START[born] and h <= top + 0.5:
-            x, y = along(path, min(h, top) / top)
-            for side, rise in ((-1, 0), (1, 1.3)):
-                c.line(x + side * 0.7, y - rise, x + side * 1.6, y - rise - 0.4, YOUNG[1])
-                leaf(c, x + side * 2.6, y - rise - 0.6, 0.38, 1.0, 1 - (side > 0), 0.1, 0.25)
+            ci, cj = c.at(*along(path, min(h, top) / top))
+            lift = n % 2
+            for side in (-1, 1):
+                for k in range(1, stalk + 1):
+                    c.put(ci + side * k, cj - lift * (k > 1), SPRING[1])
+                blade(c, ci + side * (stalk + 1 + size // 2), cj - lift, size, 0.3 * n)
     if during(g, "sprout", "whip"):
         x, y = along(path, 2.4 / top)
         for side in (-1, 1):
-            c.stroke([(x, y), (x + side * 2.8, y - 0.5)], 1.0, 0.6, SPRING)
+            c.stroke([(x, y), (x + side * 2.2, y - 0.4)], 1.0, 0.6, SPRING)
 
 
-def limbs(c, g, path, width):
-    """Draw the branches (and from "ramified" the twigs inside the pads); returns the branch paths and the pads they
-    carry, each as (x, y, radius, index) at its present growth."""
-    pads, branches = [], []
-    for k, (at, x, y, r, born) in enumerate(PADS):
+def grow(g, path):
+    """The limbs of the pads that have appeared, each as (pad, path, x, y, radius): the path runs from its parent to
+    the pad's centre as it stands at age g."""
+    limbs, paths = [], {-1: path}
+    for k, (parent, share, x, y, r, born) in enumerate(PADS):
         if g < START[born]:
             continue
-        ax, ay = along(path, at)
+        ax, ay = along(paths[parent], share)
         grown = ramp(g, START[born], 0.12)
-        ex, ey = ax + (x - ax) * (0.35 + 0.65 * grown), ay + (y - ay) * (0.6 + 0.4 * grown)
-        limb = art.spline([(ax, ay), (ax + 0.6 * (ex - ax), ay + 0.3 * (ey - ay)), (ex, ey)], 4)
-        branches.append(limb)
-        c.stroke(limb, max(0.9, width * 0.3), 0.5, TWIG, salt=k)
-        r *= 0.5 + 0.5 * grown
+        ex, ey = ax + (x - ax) * (0.8 + 0.2 * grown), ay + (y - ay) * (0.85 + 0.15 * grown)
+        paths[k] = art.spline([(ax, ay), (ax + 0.55 * (ex - ax), ay + 0.35 * (ey - ay) - 1.0), (ex, ey)], 4)
+        limbs.append((k, paths[k], ex, ey, r * (0.75 + 0.25 * grown)))
+    return limbs
+
+
+def branches(c, g, limbs, width):
+    """The grey limbs, and from "ramified" the forks of fine twig on them."""
+    for k, limb, _, _, _ in limbs:
+        bark(c, limb, max(0.9, width * (0.34 if PADS[k][0] < 0 else 0.2)), 0.5, 0.0, k)
         if during(g, "ramified"):
-            for tx, ty in twigs(r, k):
-                c.stroke([(ex, ey), (ex + 0.8 * tx, ey + 0.8 * ty)], 0.6, 0.3, TWIG, salt=k)
-        pads.append((ex, ey, r, k))
-    return branches, pads
+            for n, share in enumerate((0.45, 0.75)):
+                x, y = along(limb, share)
+                side = 1 if (k + n) % 2 else -1
+                c.line(x, y, x + side * 1.6, y - 1.4 - n, TWIG[2])
 
 
-def wire(c, g, path, width, branches):
-    """The copper wire coiled round the trunk and branches while they are first being bent."""
+def wire(c, g, path, width, limbs):
+    """The copper wire coiled round the trunk and the limbs, given as paths, while they are first being bent."""
     if during(g, "first wiring", "thickening trunk"):
         c.coil(path, width + 0.5, width * 0.4 + 0.5, WIRE)
-        for limb in branches:
+        for limb in limbs:
             c.coil(limb, 1.4, 1.0, WIRE)
 
 
@@ -326,9 +385,9 @@ def trunk(c, g, path, width):
     if g >= START["thickening trunk"]:
         bark(c, path[:7], width * 1.3, width * 1.02, mottle, 3)
     if during(g, "old"):
-        x, y = along(path, 0.26)
-        c.blob(x - 0.3, y, width * 0.2, width * 0.34, BARK[2:], jitter=0.2)
-        c.blob(x - 0.1, y + 0.2, width * 0.14, width * 0.27, (SCAR,))
+        x, y = along(path, 0.32)
+        c.blob(x - 0.3, y, width * 0.25, width * 0.4, BARK[2:], jitter=0.2)
+        c.blob(x - 0.1, y + 0.3, width * 0.17, width * 0.3, (SCAR,))
     if during(g, "ancient"):
         vein = [(along(path, s)[0] - width * 0.2 * (1 - s) + 0.5 * wobble(s * 4), along(path, s)[1])
                 for s in (0.04, 0.12, 0.2, 0.3, 0.42, 0.52)]
@@ -336,26 +395,64 @@ def trunk(c, g, path, width):
 
 
 def foliage(c, g, pads):
-    """Paint the pads from the top down, so each lower pad's lit crown overlaps the dark underside above it; from
-    "ramified" the crown's rim ends in twigs and tufts, drawn under what is already painted."""
+    """Paint the pads from the top down, so each lower pad's lit crown overlaps the dark underside above it."""
     green = 1 - ramp(g, START["first branches"], START["shaped"] - START["first branches"])
     spread, gaps = steps(g, SPREAD, 0.03), steps(g, GAPS)
-    for x, y, r, k in sorted(pads, key=lambda p: p[1]):
-        level = 0.40 + 0.04 * (g >= START["venerable"]) - 0.1 * (x - 24) / 20 - 0.08 * (y - 10) / 10
+    for k, _, x, y, r in sorted(pads, key=lambda p: p[3]):
+        level = 0.40 + steps(g, TINT) - 0.1 * (x - 24) / 20 - 0.08 * (y - 10) / 10
         shade_behind(c, x, y, r, r * 0.58, 1 + (g >= START["refined"]))
         cover = pad(c, x, y, r, level, green, spread, gaps, k * 11)
+        for (i, j), lv in cover.items():
+            if (i, j + 1) not in cover and noise(i, j, 12) < 0.8:
+                c.put(i, j, leaf_color(i, j, min(lv, 0.15), green))
         fringe(c, cover, green, k * 5)
         if c.scale >= 1.4:
             leaves(c, cover, green, k * 3)
-    if during(g, "ramified"):
-        rim = art.Canvas(c.scale)
-        for x, y, r, k in pads:
-            for tx, ty in twigs(r, k):
-                if c.at(x + tx, y + ty) not in c.px:
-                    rim.stroke([(x + 0.7 * tx, y + 0.7 * ty), (x + tx, y + ty)], 0.6, 0.3, TWIG, salt=k)
-                    leaf(rim, x + tx, y + ty - 0.3, 0.55, green, k)
-        for p, color in rim.px.items():
-            c.px.setdefault(p, color)
+
+
+def carve(c, g, limbs, width):
+    """Open the windows of sky between the tiers of the crown and show the limbs that cross them."""
+    hole = set()
+    for x, y, rx, ry, born in WINDOWS:
+        if g < START[born]:
+            continue
+        for i, j, px, py in c.scan(x - rx - 1, y - ry - 1, x + rx + 1, y + ry + 1):
+            if ((px - x) / rx) ** 2 + ((py - y) / ry) ** 2 < 1 - 0.4 * noise(i, j, 14) and (i, j) in c.px:
+                del c.px[(i, j)]
+                hole.add((i, j))
+    ghost = art.Canvas(c.scale)
+    branches(ghost, g, limbs, width)
+    c.px.update({p: ghost.px[p] for p in hole if p in ghost.px})
+
+
+def outside(c):
+    """The empty pixels the sky reaches from the canvas's border, so a twig can tell the crown's edge from its gaps."""
+    seen = set()
+    todo = [(i, j) for i in range(c.w) for j in (0, c.h - 1)] + [(i, j) for j in range(c.h) for i in (0, c.w - 1)]
+    while todo:
+        i, j = todo.pop()
+        if (i, j) in seen or (i, j) in c.px or not (0 <= i < c.w and 0 <= j < c.h):
+            continue
+        seen.add((i, j))
+        todo += [(i + 1, j), (i - 1, j), (i, j + 1), (i, j - 1)]
+    return seen
+
+
+def edge(c, g, pads):
+    """From "ramified" the crown's lacy edge: fine twigs fan out past the rims of the pads on its outline, each ending
+    in a tuft of leaves. They fill only what is still empty, so none crosses a pad."""
+    green = 1 - ramp(g, START["first branches"], START["shaped"] - START["first branches"])
+    sky, rim, lace = outside(c), art.Canvas(c.scale), steps(g, LACE)
+    for k, _, x, y, r in pads:
+        for n, (tx, ty) in enumerate(spokes(r, k)):
+            tip = c.at(x + tx, y + ty)
+            if tip not in sky or noise(k, n, 15) > lace:
+                continue
+            rim.line(x + 0.6 * tx, y + 0.6 * ty, x + tx, y + ty, TWIG[1 + (c.scale >= 1.4)])   # dark keeps it fine at 1
+            lit = (tx * LIGHT[0] + ty * LIGHT[1]) / math.hypot(tx, ty)
+            tuft(rim, x + tx, y + ty - 0.3, 0.5 + 0.28 * lit + 0.12 * (noise(k, n) - 0.5), green, n)
+    for p, color in rim.px.items():
+        c.px.setdefault(p, color)
 
 
 def pixels(g, scale=1.0):
@@ -368,14 +465,20 @@ def pixels(g, scale=1.0):
         return c.px
     top, width = steps(g, HEIGHT), steps(g, WIDTH)
     path = trunk_path(top, steps(g, BEND))
-    branches, pads = limbs(c, g, path, width)
+    if g < START["young tree"]:
+        path = [(x + 0.5, y) for x, y in path]   # a slender stem sits on one pixel column, not between two
+    limbs = grow(g, path)
+    branches(c, g, limbs, width)
     trunk(c, g, path, width)
-    wire(c, g, path, width, branches)
+    wire(c, g, path, width, [p[1] for p in limbs])
     pot(c, g)
     ground(c, g)
     if g < START["young tree"]:
         stem(c, g, path, top)
-    foliage(c, g, pads)
+    foliage(c, g, limbs)
+    carve(c, g, limbs, width)
+    if during(g, "ramified"):
+        edge(c, g, limbs)
     if during(g, "ancient"):
         for x, y, level, kind in DRIFT[:3 + 4 * (g >= START["venerable"])]:
             leaf(c, x, y, level, 0, kind)
