@@ -107,9 +107,8 @@ def glaze(c, cover, xl, xr, y0, y1, tones, salt):
 
 def wire(c, path, w0, w1):
     """Copper wire wound round a limb: thin diagonal turns."""
-    for (i, j), (u, _, across, _) in c.trace(path, w0 + 0.6, w1 + 0.6).items():
-        if (u / 3.2 + 0.4 * across) % 1 < 0.32:
-            c.put(i, j, WIRE[1] if across < 0 else WIRE[0])
+    c.coil(path, w0, w1, lambda across, shade: WIRE[1] if across < 0 else WIRE[0], pitch=3.2, twist=0.4, duty=0.32,
+           grow=0.6)
 
 
 def nursery(c, g):
@@ -148,6 +147,11 @@ def pot_body(c):
     glaze(c, rim, 10.8, 37.2, 23.2, 24.8, POT[1:], 4)
 
 
+def above_rim(x, y):
+    """A clip for what sits on the soil: moss, a stone or roots stay above the pot's rim."""
+    return y < 23.3
+
+
 def bonsai_pot(c, g):
     """The display stand and its accent from "show tree", the soil, moss and a stone, and the pot."""
     if during(g, "show tree"):
@@ -159,16 +163,16 @@ def bonsai_pot(c, g):
     pot_body(c)
     moss = steps(g, (("refined", 0.4), ("established", 1.0)))
     for k, (x, r) in enumerate(MOSS_AT if moss else ()):
-        c.blob(x, 22.5, r * (0.5 + 0.7 * moss), 0.6 + 0.9 * moss, MOSS, salt=k, where=lambda x, y: y < 23.3)
+        c.blob(x, 22.5, r * (0.5 + 0.7 * moss), 0.6 + 0.9 * moss, MOSS, salt=k, where=above_rim)
     if during(g, "established"):
-        c.blob(24, 22.7, 12, 0.7, MOSS, jitter=1, where=lambda x, y: y < 23.3)
-        c.blob(14.2, 21.4, 4.0, 2.6, STONE, lump=0.15, where=lambda x, y: y < 23.3)
+        c.blob(24, 22.7, 12, 0.7, MOSS, jitter=1, where=above_rim)
+        c.blob(14.2, 21.4, 4.0, 2.6, STONE, lump=0.15, where=above_rim)
         c.blob(13.4, 19.6, 2.2, 0.8, MOSS[1:])
 
 
 def nebari(c):
     """The roots flaring out over the soil from the trunk's foot."""
-    c.blob(CX + 0.4, 22.6, 5.0, 1.5, BARK, lump=0.1, where=lambda x, y: y < 23.3)
+    c.blob(CX + 0.4, 22.6, 5.0, 1.5, BARK, lump=0.1, where=above_rim)
     for side, reach, lift in ((-1, 7.5, 0), (-1, 4.8, 0.8), (1, 7.0, 0), (1, 4.5, 0.8)):
         c.stroke([(CX + side * 1.2, 21.2 - lift), (CX + side * reach * 0.5, 22.2), (CX + side * reach, 22.6)], 1.8, 0.7,
                  BARK[1:])
@@ -200,7 +204,7 @@ def stem_plant(c, g, foot):
     else:
         heights = (0.42, 0.58, 0.74, 0.9) if during(g, "sapling", "whip") else (0.3, 0.42, 0.54, 0.66, 0.78, 0.9)
         for k, h in enumerate(heights):
-            lx, ly = spine[round(h * (len(spine) - 1))]
+            lx, ly = art.along(spine, h)
             leaf(c, lx, ly, 1 if k % 2 else -1, 3.0 - 0.4 * (k == len(heights) - 1), LEAF[1:], k)
         if not during(g, "sapling", "whip"):
             c.put(*c.at(x, y - 0.4), BUD)
@@ -247,7 +251,7 @@ def pad(c, g, k, cx, cy, rx, ry):
     if during(g, "refined") and rx > 4.5:
         holes = [(cx - out * rx * 0.2, cy + ry * 0.65), (cx + out * rx * 0.5, cy + ry * 0.55)]
     sharp = since(g, "refined", 0.03)
-    behind = dict(c.px)
+    behind = dict(c.px) if holes else {}
     cover = puffs(c, cx, cy, rx, ry, window, k, round(steps(g, (("ramified", 1), ("mature", 2)))))
     window, leaves = rich(c, window), rich(c, LEAF)
     shades = {}
@@ -302,7 +306,7 @@ def branchlets(c, g, paths):
         return
     for k, (path, w0, _) in enumerate(paths):
         for m, at in enumerate((0.55, 0.75)):
-            x, y = path[round(at * (len(path) - 1))]
+            x, y = art.along(path, at)
             up = 1 if (k + m) % 2 else -1
             lean = 1 if noise(k, 90 + m) < 0.5 else -1
             ex, ey = x + lean * (1.4 + noise(k, 91 + m)), y + up * (2.4 + 1.2 * noise(k, 92 + m))
@@ -333,11 +337,11 @@ def bark(c, g, trunk, width, cover):
             c.scatter(cover, color, 0.3, salt=5, run=2, test=lambda i, j, s: j % row == 0 and low < s < high)
     for share, side, born in KNOTS:
         if during(g, born):
-            x, y = trunk[round(share * (len(trunk) - 1))]
+            x, y = art.along(trunk, share)
             w = width * (1 - 0.58 * share)
             c.blob(x + side * w * 0.42, y, 1.3, 1.7, BARK, lump=0.2, salt=int(share * 99))
     if during(g, "old"):
-        x, y = trunk[round(0.44 * (len(trunk) - 1))]
+        x, y = art.along(trunk, 0.44)
         x -= 0.4 * width * (1 - 0.58 * 0.44)
         c.stroke([(x + 0.5, y + 1.2), (x - 2.6, y - 0.2), (x - 5.6, y - 3.4)], 3.0, 0.5, SHARI, salt=7)
         fissures = steps(g, (("old", 0.03), ("ancient", 0.06)))
@@ -373,7 +377,7 @@ def crown(g, trunk):
     set_ = since(g, "first styling", 0.05)
     paths, made = [], {}
     for k, (share, (px, py), (rx, ry), rise, born) in enumerate(LIMBS):
-        if g < art.START[born]:
+        if not during(g, born):
             continue
         at = round(share * (len(trunk) - 1))
         (ax, ay), (fx, fy) = trunk[at], FINAL[at]
@@ -385,12 +389,12 @@ def crown(g, trunk):
         made[k] = (ax + dx, ay + dy + droop, rx * padk, ry * padk)
     pads = list(made.values())
     for k, (ox, oy), (sx, sy), born in LAYERS:
-        if k in made and g >= art.START[born]:
+        if k in made and during(g, born):
             x, y, rx, ry = made[k]
             pads.append((x + ox * rx, y + oy * ry, rx * sx, ry * sy))
     if during(g, "young tree", "first branches"):
         for share, side in ((0.45, -1), (0.65, 1)):
-            ax, ay = trunk[round(share * (len(trunk) - 1))]
+            ax, ay = art.along(trunk, share)
             pads.append((ax + side * 2.6, ay - 1.6, 1.8, 1.0))
             paths.append(([(ax, ay), (ax + side * 1.5, ay - 0.8), (ax + side * 2.6, ay - 1.2)], 0.8, 0.5))
     tx, ty = trunk[-1]
@@ -405,15 +409,15 @@ def crown(g, trunk):
 def pixels(g, scale=1.0):
     """The tree at age g in [0, 1]."""
     c = art.Canvas(scale)
-    young = g < art.START["thickening trunk"]
+    young = not during(g, "thickening trunk")
     foot = (CX, NURSERY_Y if young else SOIL_Y)
     if young:
         nursery(c, g)
     else:
         bonsai_pot(c, g)
-    if g < art.START["sprout"]:
+    if not during(g, "sprout"):
         return c.px
-    if g < art.START["young tree"]:
+    if not during(g, "young tree"):
         stem_plant(c, g, foot)
         return c.px
     trunk, width = trunk_path(g, foot), lerp(g, WIDTH)
@@ -431,7 +435,7 @@ def pixels(g, scale=1.0):
         if during(g, "established"):
             nebari(c)
         elif during(g, "thickening trunk"):
-            c.blob(CX + 0.3, 22.9, 2.8, 0.9, BARK, lump=0.1, where=lambda x, y: y < 23.3)
+            c.blob(CX + 0.3, 22.9, 2.8, 0.9, BARK, lump=0.1, where=above_rim)
     branchlets(c, g, paths)
     for k, p in enumerate(pads):
         twigs(c, g, k + 10, *p)

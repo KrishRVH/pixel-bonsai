@@ -22,7 +22,6 @@ import art
 import bonsai
 
 BACKGROUND, LABEL = "1e1e2e", "b2aa98"
-PLUS = 0.005             # a stage's frame is this far past its start, where its feature has just arrived
 COLUMNS = 5
 GAP = 8
 FONT = """
@@ -73,7 +72,7 @@ class Image:
 
 
 def stage_frames(scale):
-    return [(f"{k:02d} {name}", start + PLUS, scale) for k, (start, name) in enumerate(art.STAGES)]
+    return [(f"{k:02d} {name}", start + art.PLUS, scale) for k, (start, name) in enumerate(art.STAGES)]
 
 
 def view_frames():

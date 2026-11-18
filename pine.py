@@ -134,17 +134,12 @@ def bark_stroke(c, path, widths, rough, salt=0, dead=None, lift=0.0):
     return cover
 
 
-def needle(c, x0, y0, x1, y1, color, below=1e9):
-    """A one-pixel needle from (x0, y0) to (x1, y1) in units, kept above the line y = below."""
-    (i0, j0), (i1, j1) = c.at(x0, y0), c.at(x1, y1)
-    n = max(abs(i1 - i0), abs(j1 - j0), 1)
-    for k in range(n + 1):
-        i, j = round(i0 + (i1 - i0) * k / n), round(j0 + (j1 - j0) * k / n)
-        if (j + 0.5) / c.scale <= below:
-            c.put(i, j, color)
+def above(c, y):
+    """A test for Canvas.line that keeps the pixels centered at or above the line y (in units)."""
+    return lambda i, j: (j + 0.5) / c.scale <= y
 
 
-def needles(c, x, y, length, count, colors, a0, a1, salt, bias=0.0, below=1e9, spread=0.5):
+def needles(c, x, y, length, count, colors, a0, a1, salt, bias=0.0, test=None, spread=0.5):
     """A starburst of needles from (x, y), length units long, fanned from angle a0 to a1 (radians, y down), darker at
     the root and lighter at the tip; a larger scale draws more of them. They are lit toward the upper left, more so by
     bias."""
@@ -155,8 +150,8 @@ def needles(c, x, y, length, count, colors, a0, a1, salt, bias=0.0, below=1e9, s
         lit = clamp(0.5 - 0.5 * (math.cos(a) * 0.6 + math.sin(a) * 0.8)) ** 1.6 * 0.9 + bias
         shift = (noise(k, salt + 1) - 0.5) * spread
         mid = (x + math.cos(a) * reach * 0.55, y + math.sin(a) * reach * 0.55)
-        needle(c, x, y, *mid, tone(colors, lit - 0.1 + shift), below)
-        needle(c, *mid, x + math.cos(a) * reach, y + math.sin(a) * reach, tone(colors, lit + 0.12 + shift), below)
+        c.line(x, y, *mid, tone(colors, lit - 0.1 + shift), test)
+        c.line(*mid, x + math.cos(a) * reach, y + math.sin(a) * reach, tone(colors, lit + 0.12 + shift), test)
 
 
 def pad(c, x, base, hw, th, rise, look, salt, peak=2.4, point=0.0):
@@ -188,14 +183,14 @@ def pad(c, x, base, hw, th, rise, look, salt, peak=2.4, point=0.0):
         if point and abs(t) < 0.3:
             a, length = -1.57 + t, length + point
         needles(c, x + t * hw, fy, length, 4, look.tips, a - 0.6, a + 0.6, salt + k, bias=look.glow,
-                below=min(bottom, UNDER))
+                test=above(c, min(bottom, UNDER)))
     for n in range(round(hw * c.scale * 0.8) * (c.scale >= 1.3)):
         t = (noise(n, salt + 40) - 0.5) * 1.7
         bottom = base - lift(t)
         fy = bottom - (bottom - ridge(t)) * (0.35 + 0.35 * noise(n, salt + 41))
         a = -1.57 + 0.7 * t
         needles(c, x + t * hw, fy, 1.3, 2, look.tips, a - 0.4, a + 0.4, salt + 60 + n, bias=look.glow - 0.1,
-                below=min(bottom, UNDER))
+                test=above(c, min(bottom, UNDER)))
     for n in range(round(look.gaps * hw * c.scale / 2)):
         i, j = c.at(x + (noise(n, salt + 20) - 0.5) * 1.3 * hw, base - th * (0.25 + 0.3 * noise(n, salt + 21)))
         for hole in ((i, j), (i + 1, j)):
@@ -223,7 +218,7 @@ def tuft(c, x, y, r, look, salt):
     """A young pine's foliage: a ball of needles r units long, dark in its heart and lit at the tips."""
     y = min(y, UNDER - 1.0)
     c.blob(x, y, r * 0.3, r * 0.28, look.tones[:2], jitter=0.5, salt=salt)
-    needles(c, x, y, r * 1.1, round(2.6 * r), look.tones[1:5], -3.5, 2.8, salt, bias=0.1, below=UNDER)
+    needles(c, x, y, r * 1.1, round(2.6 * r), look.tones[1:5], -3.5, 2.8, salt, bias=0.1, test=above(c, UNDER))
 
 
 def roots(c, g, look):
@@ -240,10 +235,9 @@ def roots(c, g, look):
 
 
 def wire(c, path, w0, w1):
-    """Copper wire wound round a stroke: thin diagonal stripes, lit on the upper left."""
-    for (i, j), (u, _, across, shade) in c.trace(path, w0 + 0.6, w1 + 0.6).items():
-        if (u / 2.6 + 0.4 * across) % 1 < 0.28 and (j + 0.5) / c.scale < BASE_Y:
-            c.put(i, j, WIRE[2] if shade > 0.6 else WIRE[1] if shade > 0.3 else WIRE[0])
+    """Copper wire wound round a stroke: thin diagonal stripes, lit on the upper left, none below the soil."""
+    c.coil(path, w0, w1, lambda across, shade: WIRE[2] if shade > 0.6 else WIRE[1] if shade > 0.3 else WIRE[0],
+           pitch=2.6, twist=0.4, duty=0.28, grow=0.6, test=lambda i, j: (j + 0.5) / c.scale < BASE_Y)
 
 
 def deadwood(c, g, placed):
@@ -272,7 +266,7 @@ def drift(c, count, colors, salt):
         i, j = c.at(x, y)
         if (i, j) not in c.px:
             reach = 0.8 / c.scale * (1 + 0.5 * noise(n, salt + 2))
-            needle(c, x, y, x + reach, y + 1.6 / c.scale, colors[n % len(colors)])
+            c.line(x, y, x + reach, y + 1.6 / c.scale, colors[n % len(colors)])
 
 
 def accent(c):
@@ -308,6 +302,11 @@ def clay(c, x0, y0, x1, y1, taper=0.0, under=0.0, lit=0.0, salt=0):
         c.put(i, j, tone(POT, clamp(s), 0.1, noise(i, j, salt + 1)))
 
 
+def above_rim(x, y):
+    """A clip for the moss and stone on the soil: they stay above the pot's rim."""
+    return y < 22.6
+
+
 def ground(c, g):
     """The pot, soil and everything on the ground."""
     nursery = during(g, "seed", "thickening trunk")
@@ -330,8 +329,8 @@ def ground(c, g):
         c.scatter((14.3, SOIL_Y, 33.7, 22.6), MOSS, 0.4)
     if during(g, "established"):
         for k in range(8):
-            c.blob(15 + 2.8 * k, 21.7, 2.4, 1.0, MOSS, lump=0.2, salt=k, where=lambda x, y: y < 22.6)
-        c.blob(17.5, 21.5, 2.8, 1.3, STONE, where=lambda x, y: y < 22.6)
+            c.blob(15 + 2.8 * k, 21.7, 2.4, 1.0, MOSS, lump=0.2, salt=k, where=above_rim)
+        c.blob(17.5, 21.5, 2.8, 1.3, STONE, where=above_rim)
     if during(g, "venerable"):
         c.scatter((14.3, SOIL_Y, 33.7, 22.4), OLD, 0.12, salt=5, run=2)
     if during(g, "show tree"):
@@ -345,7 +344,7 @@ def fascicle(c, x, y, angle, length, spread=0.8):
     """A small dark tuft of needles, a V of three with lit tips, from the node (x, y) leaning toward angle."""
     for da in (-spread, 0.0, spread):
         ex, ey = x + math.cos(angle + da) * length, y + math.sin(angle + da) * length
-        needle(c, x, y, ex, ey, NEEDLE[2])
+        c.line(x, y, ex, ey, NEEDLE[2])
         c.put(*c.at(ex, ey), NEEDLE[4])
 
 
@@ -353,15 +352,15 @@ def stem(c, g, look):
     """From the sprout to the whip: a thin stem; a whorl of seed needles on it, then sparse dark needle fascicles
     along it."""
     path = [(CX + 0.4 * wobble(k * 0.5, 3) * look.top / 14, BASE_Y - look.top * k / 12) for k in range(13)]
-    c.stroke(path, look.base, look.base * 0.8, STEM if g < art.START["whip"] else OLIVE)
+    c.stroke(path, look.base, look.base * 0.8, OLIVE if during(g, "whip") else STEM)
     x, y = path[-1]
     if during(g, "sprout", "sapling"):
-        needles(c, x, y, 3.4 + 0.8 * (g >= art.START["seedling"]), 6, SPROUT, -3.2, 0.05, 1, spread=0.1)
+        needles(c, x, y, 3.4 + 0.8 * during(g, "seedling"), 6, SPROUT, -3.2, 0.05, 1, spread=0.1)
         c.put(*c.at(x, y), SEED[1])
     if during(g, "sapling"):
         count = max(2, round(steps(g, (("sapling", 2), ("whip", 4)))))
         for k in range(count):
-            fx, fy = path[round(12 * (0.25 + 0.5 * k / (count - 1)))]
+            fx, fy = art.along(path, 0.25 + 0.5 * k / (count - 1))
             fascicle(c, fx, fy, -1.57 + (1.2 if k % 2 else -1.2), 2.3, 0.55)
         fascicle(c, x, y, -1.57, 2.8, 0.9)
     if during(g, "whip"):
@@ -376,7 +375,7 @@ def place(g, look):
     k = look.top / FULL
     out = {}
     for n, spec in enumerate(PADS + (CROWN,)):
-        if g < art.START[spec.born]:
+        if not during(g, spec.born):
             continue
         hw, th = max(spec.hw * look.size, 0.9), max(spec.th * look.size ** 0.5, 1.0)
         if spec.parent is not None:
@@ -401,7 +400,6 @@ class Look:
     """The tree's features at age g, each keyed to a stage name."""
 
     def __init__(self, g):
-        self.g = g
         self.top = steps(g, HEIGHT)
         self.base = steps(g, WIDTH)
         self.taper = steps(g, TAPER)
@@ -412,7 +410,7 @@ class Look:
         self.size = steps(g, SIZE)
         self.gaps = steps(g, GAPS)
         self.fringe = steps(g, (("ramified", 0.5), ("refined", 0.8), ("mature", 1.0)))
-        self.tones = ([TONES[0][1]] + [tones for name, tones in TONES if g >= art.START[name]])[-1]
+        self.tones = ([TONES[0][1]] + [tones for name, tones in TONES if during(g, name)])[-1]
         self.glow = -0.12 + steps(g, (("venerable", 0.06),))   # how lit the needle tips are
         self.body, self.tips = self.tones[1:5], self.tones[2:]
 
@@ -421,7 +419,7 @@ def tree(c, g, look):
     """From the young tree on: trunk, branches, foliage and what grows on them."""
     path = [trunk_at(look.top * k / 18, look.bend) for k in range(19)]
     placed = place(g, look)
-    young = g < art.START["first styling"]
+    young = not during(g, "first styling")
     branches = []
     for k, p in enumerate(placed):
         if p.spec is CROWN or p.spec.parent is not None:
@@ -452,7 +450,7 @@ def tree(c, g, look):
         crown = p.spec is CROWN
         tops = pad(c, p.x, p.base, p.hw, p.th, p.rise, look, 10 * k, 1.5 if crown else 2.4, 0.8 if crown else 0.0)
         for born, share in p.spec.candles:
-            if g >= art.START[born]:
+            if during(g, born):
                 i = math.floor((p.x + share * p.hw) * c.scale)
                 if i in tops:
                     candle(c, i, tops[i])
@@ -466,8 +464,8 @@ def pixels(g, scale=1.0):
     c = art.Canvas(scale)
     look = Look(g)
     ground(c, g)
-    if g >= art.START["young tree"]:
+    if during(g, "young tree"):
         tree(c, g, look)
-    elif g >= art.START["sprout"]:
+    elif during(g, "sprout"):
         stem(c, g, look)
     return c.px

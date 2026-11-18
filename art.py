@@ -3,7 +3,8 @@
 A tree is a function of its age g in [0, 1] and a scale: pixels(g, scale) in a variety module. This module gives them
 
   STAGES, stage(g)        the 20 named stages: (start age, name), and the name of the stage g is in; index(g) is its
-                          position, ramp(g, start, span) a plain 0 to 1 ramp in age
+                          position, ramp(g, start, span) a plain 0 to 1 ramp in age, and PLUS the age past a stage's
+                          start at which a frame of it is judged
   since(g, name, span)    0 before the stage called name starts, rising to 1 over span of age: key features off stage
                           names with it, so the ladder and the drawings cannot drift apart
   steps(g, table, span)   a value that steps to each (stage name, value) of a table as that stage starts
@@ -14,14 +15,14 @@ A tree is a function of its age g in [0, 1] and a scale: pixels(g, scale) in a v
                           upper left) times scale, and drawing hands back covers ({(i, j): shade}) to detail further
     stroke, coil, trace   a tapered stroke along a path (trunk, branch, twig, root), wire wound round one, and the
                           low-level geometry of a stroke with its distance along and across
-    blob, cloud           a shaded, dithered ellipse and a lumpy mass of them: foliage, moss, stones
+    blob                  a shaded, dithered ellipse: foliage, moss, stones
     block, polygon        a shaded box with taper and rounding, and a shaded polygon: pots, stands, stones, deadwood
     line, scatter         one-pixel lines (needles) and per-pixel detail on a cover or in a box: blossoms, bark
                           flecks, petals; placed per output pixel, so a larger scale shows more of them
   size(scale), fit(w, rows)   the canvas in pixels for a scale, and the scale a pane of that size holds
-  tone, mix, spline       a color from tones by shade, a blend of two colors, a smooth path through points
-Colors are "rrggbb" strings and tones run from shadow to lit; build a long run of them with mix. Every shape takes
-light, the unit vector toward the light, LIGHT (upper left) unless a drawing needs another.
+  tone, mix               a color from tones by shade, a blend of two colors
+  spline, along           a smooth path through points, and the point a share of the way along one
+Colors are "rrggbb" strings and tones run from shadow to lit; build a long run of them with mix.
 Python 3.9, standard library.
 """
 import math
@@ -37,6 +38,7 @@ STAGES = ((0.000, "seed"), (0.015, "sprout"), (0.040, "seedling"), (0.070, "sapl
           (0.570, "refined"), (0.630, "established"), (0.690, "mature"), (0.750, "show tree"), (0.810, "old"),
           (0.870, "ancient"), (0.940, "venerable"))
 START = {name: start for start, name in STAGES}
+PLUS = 0.005             # a frame judged just past a stage's start, where its new feature has arrived
 
 
 def index(g):
@@ -60,8 +62,8 @@ def since(g, name, span=0.05):
 
 def steps(g, table, span=0.004):
     """A value that is 0 until the first stage of table, ((stage name, value), ...), and moves to each value in turn
-    over span of age from that stage's start. Frames are judged within 0.005 of a stage's start, so keep span below
-    that for a feature that must show at once."""
+    over span of age from that stage's start. Frames are judged PLUS past a stage's start, so keep span below that
+    for a feature that must show at once."""
     v = 0.0
     for name, to in table:
         v += (to - v) * since(g, name, span)
@@ -123,6 +125,11 @@ def spline(points, steps=6):
     return out + [tuple(points[-1])]
 
 
+def along(path, share):
+    """The point a share of the way along a path."""
+    return path[round(share * (len(path) - 1))]
+
+
 def clamp(v):
     return max(0.0, min(1.0, v))
 
@@ -153,7 +160,7 @@ class Canvas:
             for i in range(max(0, math.floor(x0 * s)), min(self.w, math.ceil(x1 * s))):
                 yield i, j, (i + 0.5) / s, (j + 0.5) / s
 
-    def trace(self, path, w0, w1=None, light=LIGHT):
+    def trace(self, path, w0, w1=None):
         """The pixels of a stroke along a path (a list of (x, y) in units, see spline) w0 wide at its start and
         w1 at its end, as {(i, j): (u, f, across, shade)}: u the distance along it in units, f that as a fraction
         of its length, across -1 to 1 from one edge to the other, shade as in a cover. It is at least a pixel wide."""
@@ -180,30 +187,31 @@ class Canvas:
                 d = ox * ox + oy * oy
                 if d <= 1 and ((i, j) not in best or d < best[(i, j)][0]):
                     best[(i, j)] = (d, u0 + t * n, f, (ox * -dy + oy * dx) / n,
-                                    clamp(0.5 + 0.5 * (ox * light[0] + oy * light[1])))
+                                    clamp(0.5 + 0.5 * (ox * LIGHT[0] + oy * LIGHT[1])))
         return {p: v[1:] for p, v in best.items()}
 
-    def stroke(self, path, w0, w1=None, tones=(), jitter=0.25, salt=0, light=LIGHT):
+    def stroke(self, path, w0, w1=None, tones=(), jitter=0.25, salt=0):
         """Paint a tapered stroke (trunk, branch, twig, root) in tones, lit on its upper left edge; returns its
         cover. With no tones it only measures."""
         cover = {}
-        for (i, j), (_, _, _, shade) in self.trace(path, w0, w1, light).items():
+        for (i, j), (_, _, _, shade) in self.trace(path, w0, w1).items():
             cover[(i, j)] = shade
             if tones:
                 self.put(i, j, tone(tones, shade, jitter, noise(i, j, salt)))
         return cover
 
-    def coil(self, path, w0, w1, color, pitch=3.0):
-        """Wire wound round a stroke of those widths, a diagonal stripe every pitch units along it; returns the
-        pixels it set."""
+    def coil(self, path, w0, w1, color, pitch=3.0, twist=0.35, duty=0.45, grow=0.0, test=None):
+        """Wire wound round a stroke of those widths (grow wider), a diagonal stripe every pitch units along it: duty
+        the share of each turn it covers, twist how far it slants across. color is a string or color(across, shade);
+        test(i, j) vetoes a pixel. Returns the pixels it set."""
         out = []
-        for (i, j), (u, _, across, _) in self.trace(path, w0, w1).items():
-            if (u / pitch + 0.35 * across) % 1 < 0.45:
-                self.put(i, j, color)
+        for (i, j), (u, _, across, shade) in self.trace(path, w0 + grow, w1 + grow).items():
+            if (u / pitch + twist * across) % 1 < duty and (not test or test(i, j)):
+                self.put(i, j, color(across, shade) if callable(color) else color)
                 out.append((i, j))
         return out
 
-    def blob(self, cx, cy, rx, ry, tones, jitter=0.5, lump=0.0, gaps=0.0, salt=0, where=None, light=LIGHT):
+    def blob(self, cx, cy, rx, ry, tones, jitter=0.5, lump=0.0, gaps=0.0, salt=0, where=None):
         """A filled ellipse of radii rx, ry, shaded lit on its upper left with a dithered edge between tones. lump
         (0 to about 0.4) makes its outline uneven, gaps (a share) leaves sky showing through its inside, and
         where(x, y) in units can clip it. Returns its cover."""
@@ -221,21 +229,12 @@ class Canvas:
                 continue
             if gaps and r2 < 0.55 and noise(i, j, salt + 101) < gaps:
                 continue
-            shade = clamp(0.5 + 0.5 * (nx * light[0] + ny * light[1]))
+            shade = clamp(0.5 + 0.5 * (nx * LIGHT[0] + ny * LIGHT[1]))
             cover[(i, j)] = shade
             self.put(i, j, tone(tones, shade, jitter, noise(i, j, salt)))
         return cover
 
-    def cloud(self, cx, cy, rx, ry, tones, lumps=4, jitter=0.5, gaps=0.0, salt=0, where=None, light=LIGHT):
-        """A mass of foliage: a blob with lumps blobs round its rim, the upper ones in front. Returns its cover."""
-        cover = self.blob(cx, cy, rx, ry, tones, jitter, 0.12, gaps, salt, where, light)
-        rim = sorted((cx + math.cos(a) * rx * 0.6, cy + math.sin(a) * ry * 0.55) for a in (
-            6.283 * (k + noise(salt, 5 + k)) / lumps for k in range(lumps)))
-        for k, (x, y) in enumerate(sorted(rim, key=lambda p: -p[1])):
-            cover.update(self.blob(x, y, rx * 0.55, ry * 0.6, tones, jitter, 0.1, gaps, salt + 7 + k, where, light))
-        return cover
-
-    def block(self, x0, y0, x1, y1, tones, taper=0.0, rounding=0.0, jitter=0.0, salt=0, light=LIGHT):
+    def block(self, x0, y0, x1, y1, tones, taper=0.0, rounding=0.0, jitter=0.0, salt=0):
         """A shaded box, lit on its left and top: taper narrows its foot by that many units each side, rounding
         (0 box, 1 ellipse) rounds its corners. Returns its cover."""
         cover = {}
@@ -249,14 +248,14 @@ class Canvas:
             nx, ny = 2 * (x - left) / (right - left) - 1, 2 * (y - y0) / (y1 - y0) - 1
             if rounding and abs(nx) ** (2 + 8 * (1 - rounding)) + abs(ny) ** (2 + 8 * (1 - rounding)) > 1:
                 continue
-            shade = clamp(0.5 + 0.5 * (nx * light[0] + ny * light[1]))
+            shade = clamp(0.5 + 0.5 * (nx * LIGHT[0] + ny * LIGHT[1]))
             cover[(i, j)] = shade
             self.put(i, j, tone(tones, shade, jitter, noise(i, j, salt)))
         return cover
 
-    def polygon(self, points, tones, jitter=0.25, salt=0, light=LIGHT):
-        """A filled polygon through points in units (a pad's flat underside, a jin, a stone), shaded lit toward
-        light across its extent. Returns its cover."""
+    def polygon(self, points, tones, jitter=0.25, salt=0):
+        """A filled polygon through points in units (a pad's flat underside, a jin, a stone), shaded lit on its upper
+        left across its extent. Returns its cover."""
         points = list(points)
         xs, ys = [p[0] for p in points], [p[1] for p in points]
         cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
@@ -268,16 +267,19 @@ class Canvas:
                 if (ay > y) != (by > y) and x < ax + (y - ay) * (bx - ax) / (by - ay):
                     inside = not inside
             if inside:
-                shade = clamp(0.5 + 0.5 * ((x - cx) / hw * light[0] + (y - cy) / hh * light[1]))
+                shade = clamp(0.5 + 0.5 * ((x - cx) / hw * LIGHT[0] + (y - cy) / hh * LIGHT[1]))
                 cover[(i, j)] = shade
                 self.put(i, j, tone(tones, shade, jitter, noise(i, j, salt)))
         return cover
 
-    def line(self, x0, y0, x1, y1, color):
-        """A one-pixel line between two points in units (a needle, a crack); returns its pixels."""
+    def line(self, x0, y0, x1, y1, color, test=None):
+        """A one-pixel line between two points in units (a needle, a crack); test(i, j) vetoes a pixel. Returns its
+        pixels."""
         (i0, j0), (i1, j1) = self.at(x0, y0), self.at(x1, y1)
         steps = max(abs(i1 - i0), abs(j1 - j0), 1)
         out = [(round(i0 + (i1 - i0) * k / steps), round(j0 + (j1 - j0) * k / steps)) for k in range(steps + 1)]
+        if test:
+            out = [p for p in out if test(*p)]
         for i, j in out:
             self.put(i, j, color)
         return out

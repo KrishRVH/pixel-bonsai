@@ -25,28 +25,29 @@ import json
 import os
 import time
 
+import art
 import maple
 import pine
 import sakura
-from art import H, ROWS, W  # noqa: F401  the canvas at scale 1, for callers that draw rows of it
 
 DAY = 1e9                # tokens at which the day's tree stops growing
 MATURE = 250e9           # lifetime tokens for a variety's full-grown tree
 VARIETIES = {tree.NAME: tree for tree in (sakura, maple, pine)}
+DEFAULT = "sakura"       # the variety the old tree continues as, and the one a garden falls back to
 
 
 def day_growth(tokens):
-    return 0.65 * max(0.0, min(1.0, (max(0.0, tokens) / DAY) ** 0.5))
+    return 0.65 * art.clamp((max(0.0, tokens) / DAY) ** 0.5)
 
 
 def life_growth(tokens):
-    return max(0.0, min(1.0, (max(0.0, tokens) / MATURE) ** 0.3))
+    return art.clamp((max(0.0, tokens) / MATURE) ** 0.3)
 
 
 VIEWS = {"today": day_growth, "lifetime": life_growth}
 
 
-def rows(px, rgb=None, size=1, w=W, h=H):
+def rows(px, rgb=None, size=1, w=art.W, h=art.H):
     """Half-block lines for a w by h canvas: each cell shows two stacked pixels, the upper as the glyph's color, the
     lower as its background (or the glyph's color when only the lower is set), each pixel drawn size by size.
     rgb(hex, background) gives an escape code."""
@@ -74,6 +75,14 @@ def store_path():
 
 def garden_path():
     return os.path.join(os.path.dirname(store_path()), "bonsai-varieties.json")
+
+
+def save(path, data):
+    """Write data to path as JSON atomically: to a temporary file beside it, then a rename over it."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".tmp", "w", encoding="utf-8") as f:
+        json.dump(data, f, sort_keys=True)
+    os.replace(path + ".tmp", path)
 
 
 def stored():
@@ -180,10 +189,7 @@ def tokens(ledger=None):
     for day, count in days.items():
         kept[day] = max(kept.get(day, 0), count)
     try:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path + ".tmp", "w", encoding="utf-8") as f:
-            json.dump({"days": kept}, f, sort_keys=True)
-        os.replace(path + ".tmp", path)
+        save(path, {"days": kept})
     except OSError:
         pass
     return sum(kept.values())
@@ -193,8 +199,8 @@ def tokens(ledger=None):
 
 def seeded(total):
     """A new garden: sakura continues the old tree, grown to total, and every other variety starts from seed."""
-    first = next(iter(VARIETIES))
-    return {"variety": first, "grown": {name: total if name == first else 0 for name in VARIETIES}, "counted": total}
+    return {"variety": DEFAULT, "grown": {name: total if name == DEFAULT else 0 for name in VARIETIES},
+            "counted": total}
 
 
 def number(value):
@@ -210,7 +216,7 @@ def garden(total=None):
     try:
         with open(garden_path(), encoding="utf-8") as f:
             data = json.load(f)
-        name = data["variety"] if data["variety"] in VARIETIES else next(iter(VARIETIES))
+        name = data["variety"] if data["variety"] in VARIETIES else DEFAULT
         return {"variety": name, "grown": {n: number(data["grown"].get(n, 0)) for n in VARIETIES},
                 "counted": number(data["counted"])}
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
@@ -228,9 +234,7 @@ def update(change, total=None):
             fcntl.flock(lock, fcntl.LOCK_EX)  # a sibling file, since the JSON itself is replaced
             data = garden(total)
             if change(data) or not os.path.exists(path):
-                with open(path + ".tmp", "w", encoding="utf-8") as f:
-                    json.dump(data, f, sort_keys=True)
-                os.replace(path + ".tmp", path)
+                save(path, data)
     except OSError:
         pass
     return data if data is not None else garden(total)
