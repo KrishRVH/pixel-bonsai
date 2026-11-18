@@ -5,7 +5,8 @@
   pixels(g, scale=1.0)   {(x, y): "rrggbb"} for age g in [0, 1] on a canvas of art.size(scale), the same every call
 
 A reddish seedling in a nursery pot grows into an informal upright cherry with a gentle S trunk and a broad crown of
-blossom pads on a celadon pot, ending as a gnarled, hollow old tree under a drift of petals.
+blossom pads on a celadon pot, ending as a gnarled, hollow old tree under a drift of petals. From "shaped" to "show
+tree" the crown widens and rises, tiers of pads stack up, twigs, moss, a stone, bold bark and a stand arrive in turn.
 """
 import math
 
@@ -35,13 +36,19 @@ HEIGHT = (("sprout", 3.2), ("seedling", 6), ("sapling", 9), ("whip", 13), ("youn
           ("first branches", 15.2), ("first styling", 16), ("shaped", 16.6), ("mature", 17))
 BEND = (("sapling", 0), ("young tree", 0.25), ("first wiring", 0.45), ("thickening trunk", 1))
 WIDTH = (("sprout", 0.9), ("whip", 1.1), ("young tree", 1.8), ("first wiring", 2.4), ("thickening trunk", 3.2),
-         ("shaped", 4.2), ("established", 4.7), ("mature", 5.3), ("ancient", 6.0), ("venerable", 6.4))
-LIMB = (("first branches", 1.0), ("shaped", 2.0), ("mature", 2.3), ("ancient", 2.8))
+         ("shaped", 4.2), ("layered pads", 4.9), ("ramified", 5.3), ("refined", 5.6), ("established", 6.0),
+         ("mature", 6.8), ("show tree", 6.9), ("ancient", 7.4), ("venerable", 7.7))
+LIMB = (("first branches", 1.0), ("shaped", 2.0), ("layered pads", 2.2), ("ramified", 2.4), ("refined", 2.6),
+        ("established", 2.9), ("mature", 3.3), ("show tree", 3.5), ("ancient", 3.9))
 REACH = (("first branches", 0.55), ("first styling", 0.7), ("shaped", 0.84), ("layered pads", 0.9),
-         ("ramified", 0.94), ("established", 1.0), ("venerable", 1.07))
+         ("ramified", 0.94), ("refined", 0.97), ("established", 1.0), ("mature", 1.015), ("show tree", 1.03),
+         ("venerable", 1.07))
+STATURE = (("shaped", 0.9), ("layered pads", 0.92), ("ramified", 0.94), ("refined", 0.96), ("established", 0.98),
+        ("mature", 0.99), ("show tree", 1.0))   # how much of its full height the crown has above the lower pads
 DROOP = (("shaped", 0), ("mature", 0.5), ("venerable", 1.0))
 PADK = (("first branches", 0.5), ("first wiring", 0.55), ("first styling", 0.64), ("shaped", 0.9),
-        ("venerable", 1.0))
+        ("layered pads", 0.915), ("ramified", 0.93), ("refined", 0.94), ("established", 0.95), ("mature", 0.957),
+        ("show tree", 0.965), ("venerable", 1.0))
 LIMBS = (  # trunk share it leaves at, its pad's center and radii when finished, arch, stage born
     (0.24, (8.5, 16.8), (6.2, 2.9), 2.2, "first branches"),
     (0.56, (39.0, 15.3), (6.4, 3.0), 2.0, "first branches"),
@@ -49,10 +56,13 @@ LIMBS = (  # trunk share it leaves at, its pad's center and radii when finished,
     (0.78, (38.7, 7.2), (6.6, 3.1), 1.6, "first styling"),
     (0.28, (31.5, 19.8), (3.0, 1.6), 1.0, "shaped"),
 )
+TIERS = (30, 31, 32)   # the salts of the pads that cap others: the two over the upper pads and the one over the apex
 LAYERS = (  # the limb whose pad it sits on, its shift (in that pad's radii) and radii (a share of them), stage born
-    (2, (-0.3, -1.1), (0.62, 0.58), "layered pads"),
-    (3, (0.3, -1.1), (0.62, 0.58), "layered pads"),
+    (2, (-0.25, -1.4), (0.88, 0.82), "layered pads"),
+    (3, (0.25, -1.4), (0.88, 0.82), "layered pads"),
 )
+CAP = (("layered pads", 0.7), ("show tree", 1.0))   # the pad on the apex: how much of its full size it has
+CROWN_Y = 18.0   # the height the crown rises from: the lower pads sit here and the top pads climb away from it
 MOSS_AT = ((13.5, 2.2), (18.5, 1.6), (28.5, 1.8), (31.5, 1.6), (34.5, 2.2))   # moss patches: center x, radius
 CASCADE = ((8.0, 18.6), (4.6, 22.0), (3.0, 1.6))   # twig from, pad center, radii: a pad hanging in full bloom
 KNOTS = ((0.12, -1, "old"), (0.34, 1, "old"), (0.46, -1, "ancient"), (0.07, 1, "ancient"))   # share, side, born
@@ -78,6 +88,11 @@ def soft(x, y, salt, cell):
     top = noise(ix, iy, salt) * (1 - tx) + noise(ix + 1, iy, salt) * tx
     low = noise(ix, iy + 1, salt) * (1 - tx) + noise(ix + 1, iy + 1, salt) * tx
     return top * (1 - ty) + low * ty
+
+
+def stature(g):
+    """How much of its full height the crown has: 1 before "shaped" and from "show tree" on."""
+    return lerp(g, STATURE) if during(g, "shaped") else 1.0
 
 
 def trunk_path(g, foot):
@@ -127,14 +142,17 @@ def nursery(c, g):
 
 
 def accent(c):
-    """A small dish planting beside the pot: a tuft of grass with two flowers on a mossy mound."""
-    c.block(41, 25.8, 46, 27.6, DISH, taper=0.6, rounding=0.6)
-    c.blob(43.5, 25.6, 2.2, 0.9, MOSS)
-    for x, top, lean in ((42.0, 22.6, -0.8), (43.0, 21.8, -0.2), (44.0, 22.2, 0.3), (45.0, 22.8, 0.9)):
+    """A small dish planting beside the pot: a tuft of grass with three flowers on a mossy mound."""
+    c.block(40.6, 25.6, 46.4, 27.6, DISH, taper=0.6, rounding=0.6)
+    c.blob(43.5, 25.4, 2.9, 1.0, MOSS)
+    blades = ((41.8, 21.8, -0.8), (42.8, 20.2, -0.2), (43.9, 19.4, 0.2), (45.0, 20.6, 0.9), (44.4, 22.6, 0.4))
+    for x, top, lean in blades:
         c.line(x, 25.2, x + lean, top, MOSS[2 + (x > 43.5)])
-    c.line(42.3, 24.0, 41.6, 21.4, MOSS[1])
-    c.put(*c.at(41.6, 21.0), BLOOM[5])
-    c.put(*c.at(45.4, 21.6), BLOOM[4])
+    for x, y, petal in ((41.0, 21.0, BLOOM[5]), (43.9, 18.6, BLOOM[4]), (45.9, 19.8, BLOOM[5])):
+        i, j = c.at(x, y)
+        for di, dj in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            c.put(i + di, j + dj, petal)
+        c.put(i, j, CENTER[1])
 
 
 def pot_body(c):
@@ -155,27 +173,37 @@ def above_rim(x, y):
 def bonsai_pot(c, g):
     """The display stand and its accent from "show tree", the soil, moss and a stone, and the pot."""
     if during(g, "show tree"):
-        c.block(7.5, 27.6, 46.5, 28.9, STAND, rounding=0.2)
-        c.block(10, 28.9, 13.5, 30, STAND[:2])
-        c.block(40.5, 28.9, 44, 30, STAND[:2])
-        accent(c)
+        c.block(7.5, 27.6, 46.5, 29.1, STAND, rounding=0.2)
+        c.block(10, 29.1, 13.5, 30, STAND[:2])
+        c.block(40.5, 29.1, 44, 30, STAND[:2])
     c.block(11.8, 22.2, 36.2, 23.6, SOIL, rounding=0.6, jitter=1)
     pot_body(c)
-    moss = steps(g, (("refined", 0.4), ("established", 1.0)))
+    moss = steps(g, (("refined", 1.0), ("established", 1.5)))
     for k, (x, r) in enumerate(MOSS_AT if moss else ()):
-        c.blob(x, 22.5, r * (0.5 + 0.7 * moss), 0.6 + 0.9 * moss, MOSS, salt=k, where=above_rim)
-    if during(g, "established"):
-        c.blob(24, 22.7, 12, 0.7, MOSS, jitter=1, where=above_rim)
-        c.blob(14.2, 21.4, 4.0, 2.6, STONE, lump=0.15, where=above_rim)
-        c.blob(13.4, 19.6, 2.2, 0.8, MOSS[1:])
+        c.blob(x, 22.5, r * (0.6 + 0.6 * moss), 0.7 + 0.8 * moss, MOSS, salt=k, where=above_rim)
+    if moss:
+        c.blob(24, 22.7, 11.5, steps(g, (("refined", 0.95), ("established", 1.6), ("mature", 1.9))), MOSS, jitter=1,
+               where=above_rim)
 
 
-def nebari(c):
-    """The roots flaring out over the soil from the trunk's foot."""
-    c.blob(CX + 0.4, 22.6, 5.0, 1.5, BARK, lump=0.1, where=above_rim)
-    for side, reach, lift in ((-1, 7.5, 0), (-1, 4.8, 0.8), (1, 7.0, 0), (1, 4.5, 0.8)):
-        c.stroke([(CX + side * 1.2, 21.2 - lift), (CX + side * reach * 0.5, 22.2), (CX + side * reach, 22.6)], 1.8, 0.7,
-                 BARK[1:])
+def nebari(c, g):
+    """The roots flaring out over the soil from the trunk's foot, thicker from "mature"."""
+    fat = 1 + steps(g, (("mature", 0.25),))
+    c.blob(CX + 0.4, 22.7, 6.4 * fat, 1.7 * fat, BARK, lump=0.1, where=above_rim)
+    for side, reach, lift in ((-1, 10.5, 0), (-1, 6.8, 1.0), (1, 10.0, 0), (1, 6.4, 1.0)):
+        c.stroke([(CX + side * 1.5, 21.0 - lift), (CX + side * reach * 0.5, 22.1), (CX + side * reach, 22.8)],
+                 2.8 * fat, 0.9, BARK[1:], salt=side)
+
+
+def stone(c):
+    """A big mossy stone on the soil in front of the tree's left side, a crack and moss on its top."""
+    def inside(x, y):
+        return ((x - 15.2) / 4.6) ** 2 + ((y - 21.2) / 3.7) ** 2 < 1 and y < 23.3
+
+    c.blob(15.2, 21.2, 4.6, 3.7, STONE, lump=0.12, salt=5, where=above_rim)
+    c.line(14.2, 20.4, 15.6, 22.0, STONE[0], test=lambda i, j: (i, j) in c.px)
+    c.blob(14.4, 18.3, 4.0, 1.6, MOSS, lump=0.2, salt=6, where=inside)
+    c.blob(19.4, 22.9, 1.5, 0.9, MOSS, salt=7, where=above_rim)
 
 
 def leaf(c, x, y, side, size, tones, salt=0):
@@ -244,12 +272,12 @@ def pad(c, g, k, cx, cy, rx, ry):
     """A crown pad: a leafy clump that becomes a cloud of blossom, with leaves showing through."""
     flush = steps(g, (("shaped", 0.92), ("ramified", 0.94), ("refined", 0.95), ("mature", 0.96), ("venerable", 0.98)))
     count = round(steps(g, (("shaped", 4), ("ramified", 5), ("refined", 6))))
-    lit = clamp(0.8 - (cx - CX) / 60 - (cy - 8) / 30)
+    lit = clamp(0.8 - (cx - CX) / 60 - (CROWN_Y - (CROWN_Y - cy) / stature(g) - 8) / 30)
     window = BLOOM[max(0, round(lit * (5.4 - count))):][:count] if count else LEAF
     buds = steps(g, (("young tree", 0.01), ("first branches", 0.03), ("first styling", 0.06), ("shaped", 0.02)))
     out, holes = (1 if cx > CX else -1), []
-    if during(g, "refined") and rx > 4.5:
-        holes = [(cx - out * rx * 0.2, cy + ry * 0.65), (cx + out * rx * 0.5, cy + ry * 0.55)]
+    if during(g, "refined") and rx > 4.5 and k not in TIERS:
+        holes = [(cx - out * rx * 0.25, cy + ry * 0.55, 2.2, 1.5), (cx + out * rx * 0.5, cy + ry * 0.45, 1.8, 1.3)]
     sharp = since(g, "refined", 0.03)
     behind = dict(c.px) if holes else {}
     cover = puffs(c, cx, cy, rx, ry, window, k, round(steps(g, (("ramified", 1), ("mature", 2)))))
@@ -257,14 +285,14 @@ def pad(c, g, k, cx, cy, rx, ry):
     shades = {}
     for (i, j), shade in cover.items():
         x, y = (i + 0.5) / c.scale, (j + 0.5) / c.scale
-        if any(((x - hx) / 1.7) ** 2 + ((y - hy) / 1.5) ** 2 < 1 for hx, hy in holes):
+        if any(((x - hx) / hrx) ** 2 + ((y - hy) / hry) ** 2 < 1 for hx, hy, hrx, hry in holes):
             c.px.pop((i, j), None)   # puffs painted it: let what is behind show
             if (i, j) in behind:
                 c.px[(i, j)] = behind[(i, j)]
             continue
         shade = 0.7 * shade + 0.15 * (1 + (x - cx) / rx * art.LIGHT[0] + (y - cy) / ry * art.LIGHT[1])
         shade += 0.2 * (soft(x, y, k, 2.4) - 0.5) - (0.3 + 0.2 * sharp) * max(0, (y - cy) / ry - 0.1)
-        shade = clamp(0.5 + (1.4 + 0.5 * sharp) * (shade - 0.5))
+        shade = clamp(0.5 + (1.4 + 0.5 * sharp) * (shade - 0.5) + 0.12 * (k in TIERS))
         shades[(i, j)] = shade
         n, m = noise(i, j, k), noise(i, j, k + 31)
         if m < (1 - flush) * 1.4 * (1 - shade) or not flush:
@@ -292,12 +320,26 @@ def pad(c, g, k, cx, cy, rx, ry):
 
 def twigs(c, g, k, cx, cy, rx, ry):
     """From "ramified" a fan of fine twigs under a pad, drawn before it."""
-    fan = round(steps(g, (("ramified", 2),)) * max(1.0, c.scale ** 0.5)) if rx > 4.5 else 0
+    fan = round(steps(g, (("ramified", 3), ("mature", 2))) * max(1.0, c.scale ** 0.5)) if rx > 4.5 else 0
     for m in range(fan):
         t = (m + 0.5) / fan - 0.5
         x, y = cx + t * rx, cy + ry * (0.7 - 0.5 * t * t)
-        c.stroke([(cx + t * rx * 0.5, y - 0.6), (cx + t * rx * 0.8, y + 0.5), (x + t, y + 1.6 + noise(k, m))], 0.9, 0.4,
-                 BARK[2:])
+        end = (x + t * 1.5, y + 1.8 + 1.4 * noise(k, m))
+        c.stroke([(cx + t * rx * 0.5, y - 0.6), (cx + t * rx * 0.8, y + 0.5), end], 1.0, 0.5, BARK[2:])
+
+
+def sprigs(c, g, k, cx, cy, rx, ry):
+    """From "ramified" until "established" twig tips with a bud on them, poking out of a pad's top and ends."""
+    if not during(g, "ramified", "established") or rx < 4.5:
+        return
+    for m, t in enumerate((-0.75, -0.25, 0.3, 0.8)):
+        x, y = cx + t * rx, cy - ry * (0.78 - 0.4 * t * t)
+        lean = (noise(k, 60 + m) - 0.5) * 2.4
+        tip = (x + lean, y - 1.4 - 1.0 * noise(k, 64 + m))
+        if tip[1] < 1.5:
+            continue
+        c.line(x, y + 0.4, *tip, BARK[3], test=lambda i, j: (i, j) not in c.px)
+        c.put(*c.at(*tip), BLOOM[3])
 
 
 def branchlets(c, g, paths):
@@ -315,14 +357,16 @@ def branchlets(c, g, paths):
 
 
 def fringe(c, g, k, cx, cy, rx, ry):
-    """From "mature" weeping tips hanging from a big pad's outer rim, each ending in a blossom."""
-    side = 1 if cx > CX else -1
-    for m in range(2 if rx > 4.5 and cy > 14 and during(g, "mature") else 0):
-        x = cx + side * rx * (0.55 + 0.25 * m)
-        y = cy + ry * (0.7 - 0.5 * ((x - cx) / rx) ** 2)
-        drop = 2.0 + 1.0 * noise(k, 80 + m)
-        c.stroke([(x, y - 0.4), (x + side * 0.5, y + drop * 0.5), (x + side * 0.3, y + drop)], 0.6, 0.3, BARK[2:])
-        c.put(*c.at(x + side * 0.3, y + drop), BLOOM[4 + m % 2])
+    """From "mature" weeping chains of blossom hanging from a pad's underside, longer on a show tree."""
+    n = round(steps(g, (("mature", 3), ("show tree", 4)))) if rx > 4.5 and cy > 14 else 0
+    for m in range(n):
+        t = (m + 0.5) / n - 0.5
+        x = cx + t * rx * 1.5
+        y = cy + ry * (0.7 - 0.5 * t * t * 2.25)
+        drop = (2.6 + 1.8 * noise(k, 80 + m)) * (1 + steps(g, (("show tree", 0.3),)))
+        sway = 1 if noise(k, 70 + m) < 0.5 else -1
+        c.line(x, y - 0.3, x + sway * 0.7, y + drop, BLOOM[2], test=lambda i, j: (i, j) not in c.px)
+        c.put(*c.at(x + sway * 0.7, y + drop), BLOOM[4 + m % 2])
 
 
 def bark(c, g, trunk, width, cover):
@@ -333,8 +377,10 @@ def bark(c, g, trunk, width, cover):
         c.scatter(cover, GLOSS, 1.0, salt=15, test=lambda i, j, s: s > 0.9)
     if during(g, "mature"):
         row = 2 + round(c.scale)
-        for color, low, high in ((LENTICEL[0], 0.3, 0.55), (LENTICEL[1], 0.55, 0.9)):
-            c.scatter(cover, color, 0.3, salt=5, run=2, test=lambda i, j, s: j % row == 0 and low < s < high)
+        bold = during(g, "mature", "old")
+        for color, low, high in ((LENTICEL[0], 0.25, 0.55), (LENTICEL[1], 0.5, 0.92)):
+            c.scatter(cover, color, 0.65 if bold else 0.3, salt=5, run=3 if bold else 2,
+                      test=lambda i, j, s: j % row == 0 and low < s < high)
     for share, side, born in KNOTS:
         if during(g, born):
             x, y = art.along(trunk, share)
@@ -343,7 +389,9 @@ def bark(c, g, trunk, width, cover):
     if during(g, "old"):
         x, y = art.along(trunk, 0.44)
         x -= 0.4 * width * (1 - 0.58 * 0.44)
-        c.stroke([(x + 0.5, y + 1.2), (x - 2.6, y - 0.2), (x - 5.6, y - 3.4)], 3.0, 0.5, SHARI, salt=7)
+        k = width / 5.8
+        c.stroke([(x + 0.5, y + 1.2), (x - 2.6 * k, y - 0.2 * k), (x - 5.6 * k, y - 3.4 * k)], 3.0 * k, 0.5, SHARI,
+                 salt=7)
         fissures = steps(g, (("old", 0.03), ("ancient", 0.06)))
         c.scatter(cover, BARK[0], fissures, salt=14, test=lambda i, j, s: 0.2 < s < 0.8)
         at = round(0.2 * (len(trunk) - 1))
@@ -358,13 +406,13 @@ def bark(c, g, trunk, width, cover):
 
 def petals(c, g):
     """Petals in the air from "ancient", and from "venerable" fallen on the moss, the pot and the stand."""
-    drift = steps(g, (("ancient", 0.02), ("venerable", 0.035)))
+    drift = steps(g, (("ancient", 0.04), ("venerable", 0.055)))
 
     def free(i, j, shade):
         return (i, j) not in c.px and (i + 1, j) not in c.px
 
-    c.scatter((1, 2, 47, 23), BLOOM[3:6], drift, salt=9, test=free)
-    c.scatter((1, 2, 47, 23), BLOOM[4:6], drift * 0.4, salt=10, run=2, test=free)
+    c.scatter((0, 1, 48, 27), BLOOM[3:6], drift, salt=9, test=free)
+    c.scatter((0, 1, 48, 27), BLOOM[4:6], drift * 0.4, salt=10, run=2, test=free)
     if during(g, "venerable"):
         c.scatter((11.8, 22.0, 36.2, 23.4), BLOOM[4:6], 0.3, salt=11, test=lambda i, j, s: (i, j) in c.px)
         c.scatter((10.8, 23.2, 37.2, 24.0), BLOOM[5:], 0.12, salt=12, test=lambda i, j, s: (i, j) in c.px)
@@ -372,38 +420,47 @@ def petals(c, g):
 
 
 def crown(g, trunk):
-    """The branches and pads of the tree at g: (paths, pads), each path with its widths."""
+    """The branches and pads of the tree at g: (paths, pads), each path with its widths and each pad with its salt, so
+    a pad keeps its blossoms as others join it."""
     limb_w, reach, droop, padk = lerp(g, LIMB), lerp(g, REACH), lerp(g, DROOP), lerp(g, PADK)
+    height = stature(g)
     set_ = since(g, "first styling", 0.05)
-    paths, made = [], {}
+    paths, made, pads = [], {}, []
     for k, (share, (px, py), (rx, ry), rise, born) in enumerate(LIMBS):
         if not during(g, born):
             continue
         at = round(share * (len(trunk) - 1))
         (ax, ay), (fx, fy) = trunk[at], FINAL[at]
         dx, dy = (px - fx) * reach, (py - fy) * set_ - abs(px - fx) * 0.55 * reach * (1 - set_)
+        dy = CROWN_Y - (CROWN_Y - (ay + dy)) * height - ay
         end = (ax + dx, ay + dy + droop + ry * 0.3 * padk)
         arch = [(ax + 0.3 * dx, ay + 0.3 * dy - rise * 0.6), (ax + 0.65 * dx, ay + 0.65 * dy - rise)]
-        path = art.spline([(ax, ay)] + arch + [end], 4)
-        paths.append((path, limb_w, limb_w * 0.4))
+        paths.append((art.spline([(ax, ay)] + arch + [end], 4), limb_w, limb_w * 0.4))
         made[k] = (ax + dx, ay + dy + droop, rx * padk, ry * padk)
-    pads = list(made.values())
-    for k, (ox, oy), (sx, sy), born in LAYERS:
-        if k in made and during(g, born):
-            x, y, rx, ry = made[k]
-            pads.append((x + ox * rx, y + oy * ry, rx * sx, ry * sy))
+        pads.append((10 + k,) + made[k])
+    for k, (limb, (ox, oy), (sx, sy), born) in enumerate(LAYERS):
+        if limb in made and during(g, born):
+            x, y, rx, ry = made[limb]
+            pads.append((30 + k, x + ox * rx, y + oy * ry, rx * sx, ry * sy))
     if during(g, "young tree", "first branches"):
         for share, side in ((0.45, -1), (0.65, 1)):
             ax, ay = art.along(trunk, share)
-            pads.append((ax + side * 2.6, ay - 1.6, 1.8, 1.0))
+            pads.append((20 + side, ax + side * 2.6, ay - 1.6, 1.8, 1.0))
             paths.append(([(ax, ay), (ax + side * 1.5, ay - 0.8), (ax + side * 2.6, ay - 1.2)], 0.8, 0.5))
     tx, ty = trunk[-1]
-    pads.append((tx, ty - 1.0, 5.9 * padk, 3.4 * padk))
+    top = CROWN_Y - (CROWN_Y - ty + 1.0) * height
+    pads.append((40, tx, top, 5.9 * padk, 3.4 * padk))
+    if during(g, "layered pads"):
+        cap = lerp(g, CAP)
+        pads.append((32, tx - 0.6, top - 2.5 * cap * padk, 4.2 * cap * padk, 2.0 * cap * padk))
     if during(g, "venerable"):
         (fx, fy), (px, py), (rx, ry) = CASCADE
         paths.append(([(fx, fy), (fx + (px - fx) * 0.4, fy + (py - fy) * 0.7), (px, py)], 0.8, 0.5))
-        pads.append((px, py, rx, ry))
-    return paths, sorted(pads, key=lambda p: p[1])
+        pads.append((41, px, py, rx, ry))
+    pads.sort(key=lambda p: (p[0] in TIERS, p[2]))   # the tiers are drawn last, over the pads they cap
+    if not during(g, "shaped"):   # before "shaped" a pad's blossoms follow its place in the crown, as they always did
+        pads = [(10 + n,) + p[1:] for n, p in enumerate(pads)]
+    return paths, pads
 
 
 def pixels(g, scale=1.0):
@@ -433,16 +490,21 @@ def pixels(g, scale=1.0):
     if not young:
         pot_body(c)
         if during(g, "established"):
-            nebari(c)
+            nebari(c, g)
         elif during(g, "thickening trunk"):
             c.blob(CX + 0.3, 22.9, 2.8, 0.9, BARK, lump=0.1, where=above_rim)
     branchlets(c, g, paths)
-    for k, p in enumerate(pads):
-        twigs(c, g, k + 10, *p)
-    for k, p in enumerate(pads):
-        pad(c, g, k + 10, *p)
-    for k, p in enumerate(pads):
-        fringe(c, g, k + 10, *p)
+    for p in pads:
+        twigs(c, g, *p)
+    for p in pads:
+        pad(c, g, *p)
+    for p in pads:
+        sprigs(c, g, *p)
+        fringe(c, g, *p)
+    if during(g, "established"):
+        stone(c)
+    if during(g, "show tree"):
+        accent(c)
     if during(g, "ancient"):
         petals(c, g)
     return c.px
