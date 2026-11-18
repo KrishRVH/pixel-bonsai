@@ -2,8 +2,9 @@
 pine.py, on the kit and the ladder of stages in art.py) at an age from the day's tokens or from the lifetime tokens
 that variety has grown.
 
-  day_growth(tokens)   the day's tree's age, 0 to 0.65: (tokens / DAY) ** 0.5, quick early in the day; an autumn 2026
-                       median day (about 0.23B tokens) thickens its trunk and a busy one (1B) establishes it
+  day_growth(tokens)   the day's tree's age, 0 to 1: (tokens / DAY) ** 0.47, quick early in the day and never capped
+                       short of the ladder's end: 100M is a young tree, an autumn 2026 median day (about 0.25B)
+                       thickens its trunk, a busy 1B is refined, the 2.1B record is old, about 2.6B reaches venerable
   life_growth(tokens)  a variety's lifetime age, 0 to 1: (tokens / MATURE) ** 0.3, quick while young and slower with
                        age; at autumn 2026's pace (about 0.4B tokens a day) it is a venerable tree in about two years
   VIEWS, VARIETIES     the two age mappings by view name, and the variety modules by name, in the order a switch
@@ -30,14 +31,14 @@ import maple
 import pine
 import sakura
 
-DAY = 1e9                # tokens at which the day's tree stops growing
+DAY = 3e9                # tokens in a day for a fully venerable day's tree
 MATURE = 250e9           # lifetime tokens for a variety's full-grown tree
 VARIETIES = {tree.NAME: tree for tree in (sakura, maple, pine)}
 DEFAULT = "sakura"       # the variety the old tree continues as, and the one a garden falls back to
 
 
 def day_growth(tokens):
-    return 0.65 * art.clamp((max(0.0, tokens) / DAY) ** 0.5)
+    return art.clamp((max(0.0, tokens) / DAY) ** 0.47)
 
 
 def life_growth(tokens):
