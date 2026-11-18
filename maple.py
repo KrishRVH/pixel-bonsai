@@ -11,8 +11,10 @@ from stage names: a pad appears at its stage and grows for a while, the wire is 
 tiers of pads with sky and limbs showing between them (WINDOWS) and, from "ramified", a lacy edge of twigs that fills
 out with age (LACE). From "refined" the windows open wide, each pad splits into a lit crest and a shadowed flank, and
 moss shows on the soil. "ancient" adds a bleached shari up the trunk, a broad buttressed foot and leaves drifting in
-the air. Foliage is lit on its upper left; a larger scale adds per-pixel leaf glyphs, bark streaks, finer twigs and
-holes in the pads rather than bigger blocks.
+the air. At "layered pads" the crown reaches out into low side tiers and its apex rises; at "established" the lower pads
+lift to show the nebari and the stone, and at "mature" they swing outward and every pad swells round a much thicker,
+mottled, buttressed trunk (SHIFTS, SWELL). Foliage is lit on its upper left; a larger scale adds per-pixel leaf glyphs,
+bark streaks, finer twigs and holes in the pads rather than bigger blocks.
 """
 import math
 
@@ -27,6 +29,7 @@ BARK = ("34303a", "524c54", "75706e", "958f88", "b5ada0")    # shadow to lit: sm
 TWIG = ("34262a", "54403a", "7a5e4e")
 YOUNG = ("6a3430", "a04a3c", "d06a52")                       # a seedling's red stem
 LICHEN, SCAR = ("c8c8b4", "9a9c88"), "241818"
+PATCH = ("a89f90", "c2baa8")                                 # the pale mottling of old grey bark
 POT = ("a89f88", "cfc6ac", "ebe3cc", "faf5e6")               # ivory glaze
 SOIL = ("2b1f19", "3d2c22", "57402f")
 MOSS = ("2f5a2a", "4f8a38", "7cb450", "a8d878")
@@ -43,14 +46,15 @@ TRUNK = ((0, 0), (0.2, 1.6), (0.4, -1.2), (0.6, -2.6), (0.8, -1.0), (1, 1.5))   
 HEIGHT = (("sprout", 3), ("seedling", 6), ("sapling", 9), ("whip", 14), ("young tree", 14.5), ("first branches", 15),
           ("shaped", FULL))
 WIDTH = (("sprout", 0.6), ("young tree", 1.7), ("first branches", 2.0), ("first wiring", 2.4),
-         ("thickening trunk", 3.8), ("first styling", 4.2), ("shaped", 4.6), ("ramified", 4.7), ("mature", 6.0),
-         ("old", 6.3), ("ancient", 7.6))
+         ("thickening trunk", 3.8), ("first styling", 4.2), ("shaped", 4.6), ("ramified", 4.7), ("mature", 7.8),
+         ("old", 8.2), ("ancient", 9.2))
+SWELL = (("mature", 0.1),)                                   # the share every pad grows beyond its radius
 BEND = (("young tree", 0.25), ("first wiring", 1.0))
-FLARE = (("mature", 1.3), ("old", 1.35), ("ancient", 1.5))      # how far the foot of the trunk spreads past its width
+FLARE = (("established", 1.15), ("mature", 1.6), ("old", 1.55), ("ancient", 1.45))   # how far the trunk's foot spreads
 SPREAD = (("young tree", 0.5), ("shaped", 0.8), ("ramified", 0.9), ("refined", 1.4))   # how many tones a pad spans
 SPLIT = (("refined", 0.24),)                                 # how far a pad's lit crest and shadowed flank pull apart
 GAPS = (("refined", 0.5), ("old", 0.8))                      # holes in the pads, on a canvas above scale 1.4
-MOTTLE = (("mature", 0.3), ("old", 0.34), ("ancient", 0.1))                    # pale patches on the bark
+MOTTLE = (("mature", 0.42), ("old", 0.44), ("ancient", 0.1))                    # pale patches on the bark
 PADS = (  # parent limb (-1 the trunk), the share along it where this one leaves, the pad's final centre and radius,
           # and the stage it appears at
     (-1, 1.00, 24.5, 4.2, 4.2, "young tree"), (-1, 0.58, 33.5, 11.0, 4.4, "young tree"),
@@ -58,8 +62,14 @@ PADS = (  # parent limb (-1 the trunk), the share along it where this one leaves
     (-1, 0.82, 18.0, 7.4, 4.4, "first branches"), (-1, 0.78, 31.0, 7.0, 4.4, "first branches"),
     (-1, 0.30, 17.0, 14.8, 3.8, "first styling"), (-1, 0.25, 31.0, 15.2, 4.0, "first styling"),
     (-1, 0.72, 24.0, 9.2, 3.6, "shaped"),
-    (2, 0.6, 10.5, 8.2, 3.2, "layered pads"), (1, 0.6, 38.0, 7.8, 3.2, "layered pads"),
-    (2, 0.6, 9.0, 15.2, 3.2, "layered pads"), (1, 0.6, 39.5, 15.0, 3.2, "layered pads"))
+    (2, 0.6, 9.5, 10.0, 4.4, "layered pads"), (1, 0.6, 39.0, 9.6, 4.4, "layered pads"),
+    (2, 0.6, 8.0, 18.4, 4.0, "layered pads"), (1, 0.6, 40.5, 18.0, 4.0, "layered pads"))
+SHIFTS = (  # a pad that moves or swells when a stage starts: its number in PADS, the stage, and dx, dy, dr
+    (0, "layered pads", 0.3, -0.9, 0.3), (3, "layered pads", 0.0, -0.5, 0.0), (4, "layered pads", 0.0, -0.5, 0.0),
+    (5, "established", 0.0, -0.8, 0.0), (6, "established", 0.0, -0.8, 0.0),
+    (5, "mature", -1.8, -0.4, 0.0), (6, "mature", 1.8, -0.4, 0.0),
+    (8, "mature", -1.6, 0.0, 0.5), (9, "mature", 1.6, 0.0, 0.5),
+    (10, "mature", -1.8, 0.4, 0.4), (11, "mature", 1.8, 0.4, 0.4))
 WINDOWS = (  # sky showing between the tiers of the crown, with a limb in it: centre, radii, and the stage it opens at
     (16.5, 9.6, 2.8, 0.9, "layered pads"), (31.5, 9.2, 2.8, 0.9, "layered pads"),
     (13.4, 12.8, 3.9, 1.8, "refined"), (34.8, 12.6, 3.9, 1.8, "refined"),
@@ -215,10 +225,11 @@ def bark(c, path, w0, w1, mottle=0.0, salt=0):
     for (i, j), (u, f, across, shade) in c.trace(path, w0, w1).items():
         s = shade - 0.16 * (noise(round(across * w0 / 1.6), int(u / 5), salt + 4) < 0.2)
         color = tone(BARK, s, 0.25, noise(i, j, salt))
-        if mottle and shade > 0.4 and noise(i // 2, j // 2, salt + 5) < mottle:
-            color = LICHEN[noise(i, j, salt + 6) < 0.4]
-        elif noise(i, j, salt + 7) < 0.05 * mottle:
-            color = BARK[0]
+        patch = noise(i // 2, j // 2, salt + 5)
+        if mottle and shade > 0.3 and patch < 0.5 * mottle:
+            color = PATCH[noise(i, j, salt + 6) < 0.3]
+        elif mottle and patch > 1 - 0.5 * mottle:
+            color = (TWIG[2], BARK[1], BARK[0])[min(2, int((1 - shade) * 3))]
         c.put(i, j, color)
         cover[(i, j)] = shade
     return cover
@@ -295,7 +306,7 @@ def ground(c, g):
     if during(g, "established"):
         for x, rx in ((17.5, 2.6), (21, 2.0), (28, 2.4), (31, 3.0)):
             c.blob(x, 22.4, rx, 1.2, MOSS, jitter=0.6, salt=int(x), where=above_rim)
-        rock = c.blob(29.4, 20.4, 3.4, 3.0, STONE, jitter=0.3, lump=0.08, salt=5, where=above_rim)
+        rock = c.blob(30.4, 20.0, 3.9, 3.4, STONE, jitter=0.3, lump=0.08, salt=5, where=above_rim)
         c.scatter({p: s for p, s in rock.items() if s > 0.6}, MOSS[1:], 0.25, salt=6)
         for n, (points, w) in enumerate(ROOTS):
             root(c, art.spline(points, 4), w * (1 + 0.4 * during(g, "ancient")), 0.6, n)
@@ -359,11 +370,16 @@ def grow(g, path):
     for k, (parent, share, x, y, r, born) in enumerate(PADS):
         if not during(g, born):
             continue
+        for n, stage, dx, dy, dr in SHIFTS:
+            if n == k:
+                s = since(g, stage, 0.004)
+                x, y, r = x + dx * s, y + dy * s, r + dr * s
         ax, ay = along(paths[parent], share)
-        grown = since(g, born, 0.12)
+        # a pad of the later tiers arrives nearly full, so its stage shows at once
+        grown = since(g, born, 0.12) if START[born] < START["layered pads"] else 0.5 + 0.5 * since(g, born, 0.04)
         ex, ey = ax + (x - ax) * (0.8 + 0.2 * grown), ay + (y - ay) * (0.85 + 0.15 * grown)
         paths[k] = art.spline([(ax, ay), (ax + 0.55 * (ex - ax), ay + 0.35 * (ey - ay) - 1.0), (ex, ey)], 4)
-        limbs.append((k, paths[k], ex, ey, r * (0.75 + 0.25 * grown)))
+        limbs.append((k, paths[k], ex, ey, r * (0.75 + 0.25 * grown) * (1 + steps(g, SWELL))))
     return limbs
 
 
@@ -399,7 +415,9 @@ def trunk(c, g, path, width):
         bark(c, path[:7], width * 1.3, width * 1.02, mottle, 3)
     flare = steps(g, FLARE)
     if flare:
-        bark(c, [(x - 2.8 * (flare - 1), y) for x, y in path[:10]], width * flare, width * 1.02, mottle, 3)
+        foot = art.Canvas(c.scale)
+        bark(foot, [(x - 2.8 * (flare - 1), y) for x, y in path[:10]], width * flare, width * 1.02, mottle, 3)
+        c.px.update({p: color for p, color in foot.px.items() if p[1] < 23.3 * c.scale})
     if during(g, "old"):
         x, y = along(path, 0.34)
         c.blob(x + width * 0.1, y, width * 0.34, width * 0.5, LICHEN[::-1], jitter=0.2)
