@@ -38,6 +38,7 @@ STONE = ("4d4d55", "6e6e76", "9a98a0", "c0bdc2")
 STAND = ("4a3322", "6b4a32", "8f6a4a", "b08a62")
 SLATE = ("3d5a6e", "5d8199", "8fb0c4")
 GRASS = ("4f7d3a", "78a84a", "a8cf72", "d7e8a0")
+FLOWER = ("e8c76a", "fbf0b8")                                          # the accent's flowers
 WIRE = ("a85d2a", "d58a46", "f0b472")
 SEED = ("5c3d22", "8a6538")
 
@@ -49,10 +50,12 @@ TRUNK = ((0.0, 0.0), (0.1, -0.8), (0.22, -2.0), (0.4, -0.3), (0.55, 2.0), (0.68,
 HEIGHT = (("sprout", 3.0), ("seedling", 6.0), ("sapling", 9.0), ("whip", 14.0), ("young tree", 15.5),
           ("first branches", 16.8), ("thickening trunk", 17.8), ("first styling", 18.8), ("shaped", FULL))
 WIDTH = (("sprout", 0.7), ("whip", 1.2), ("young tree", 1.9), ("first branches", 2.3), ("thickening trunk", 4.0),
-         ("shaped", 5.0), ("mature", 7.6), ("ancient", 8.6))
+         ("shaped", 5.0), ("layered pads", 5.5), ("ramified", 6.0), ("refined", 6.5), ("established", 7.0),
+         ("mature", 7.8), ("show tree", 8.2), ("ancient", 8.8))
 TAPER = (("sprout", 0.9), ("young tree", 0.6), ("thickening trunk", 0.42), ("shaped", 0.4))
 BEND = (("young tree", 0.15), ("first wiring", 0.6), ("thickening trunk", 0.85), ("first styling", 1.0))
-ROOTS = (("established", 4.2), ("established", 7.0), ("mature", 9.6))   # the nebari: each root's stage and its reach
+NEBARI = ((-1, "established", 3.6), (1, "established", 4.2), (-1, "established", 5.8), (1, "established", 6.8),
+          (1, "established", 9.2), (-1, "mature", 7.6))   # each root's side, stage and reach over the soil
 ROUGH = (("thickening trunk", 0.25), ("shaped", 0.5), ("mature", 1.0))
 REACH = (("young tree", 0.3), ("first branches", 0.45), ("thickening trunk", 0.6), ("first styling", 0.8),
          ("shaped", 1.0))
@@ -60,6 +63,8 @@ SIZE = (("young tree", 0.22), ("first branches", 0.27), ("thickening trunk", 0.3
         ("shaped", 0.98), ("layered pads", 0.99), ("ramified", 1.0), ("refined", 1.01), ("mature", 1.02),
         ("venerable", 1.04))
 GAPS = (("refined", 0.3), ("mature", 0.45))
+CHILD = (("layered pads", 0.5), ("ramified", 0.62), ("refined", 0.74), ("established", 0.8), ("mature", 0.88))
+LOWEST = (("established", 0.1), ("show tree", 0.12))   # the outer pads' size and how much wider the lowest tier is
 
 Pad = namedtuple("Pad", "inner base hw th rise born candles parent back floor", defaults=((), None, False, UNDER))
 # inner: the distance from the trunk's axis to the pad's inner end (negative to its left), base: the underside y at the
@@ -70,15 +75,16 @@ Pad = namedtuple("Pad", "inner base hw th rise born candles parent back floor", 
 PADS = (
     Pad(-3.6, 18.9, 6.0, 3.0, 1.0, "young tree", (("shaped", -0.8),), None),
     Pad(3.0, 12.6, 5.0, 2.6, 0.8, "young tree", (("shaped", 0.3), ("venerable", -0.5)), None),
-    Pad(3.6, 18.5, 5.4, 3.0, 0.8, "first branches", (), None),
+    Pad(3.6, 18.5, 5.4, 3.0, 0.8, "first branches", (("ramified", 0.3),), None),
     Pad(-3.0, 12.8, 4.6, 2.6, 0.8, "first branches", (("layered pads", -0.4),), None),
-    Pad(0.0, -1.8, 2.3, 2.2, 0.6, "layered pads", (("refined", 0.6),), 1),
+    Pad(0.0, -1.8, 2.3, 2.2, 0.6, "layered pads", (("ramified", 0.6),), 1),
     Pad(0.0, -1.8, 2.2, 1.8, 0.6, "layered pads", (("venerable", 0.0),), 3),
     Pad(-2.2, 2.2, 2.7, 2.2, -0.8, "layered pads", (), 0, False, 21.6),
-    Pad(0.5, 2.2, 2.7, 2.2, -0.8, "layered pads", (), 2, False, 21.6),
+    Pad(0.5, 2.2, 2.7, 2.2, -0.8, "layered pads", (("refined", 0.1),), 2, False, 21.6),
     Pad(-0.4, 15.4, 5.6, 2.2, 0.0, "layered pads", (), None, True),
     Pad(0.6, 9.8, 4.6, 1.8, 0.0, "layered pads", (), None, True))
 CROWN = Pad(0.0, 5.9, 4.2, 2.6, 0.0, "young tree", (("shaped", 0.0), ("venerable", -0.6)), None)
+LOWEST_TIER = (0, 2)   # the lowest tier's pads in PADS
 DIP = 1.4              # how far below a pad its branch leaves the trunk
 JIN = (  # the pad (an index of PADS, CROWN being -1) whose outer end it grows from, angle (radians, y down), length,
          # stage
@@ -206,7 +212,8 @@ def pad(c, x, base, hw, th, rise, look, salt, peak=2.4, point=0.0, floor=UNDER):
         if not high <= py <= min(bottom, floor):
             continue
         d = (py - high) / max(bottom - high, 1.0)
-        c.put(i, j, tone(look.body, clamp(0.74 - 0.75 * d - 0.12 * t - 0.35 * (1 - u) ** 1.5), 0.5, noise(i, j, salt)))
+        shade = 0.74 + look.lit - 0.75 * d - 0.12 * t - 0.35 * (1 - u) ** 1.5
+        c.put(i, j, tone(look.body, clamp(shade), 0.5, noise(i, j, salt)))
     fans = max(3, round(hw * 2 * c.scale * (1 + 0.5 * look.fringe) / 2.2))
     for k in range(fans + 2):
         t = -0.96 + 1.92 * (k + 0.15 + 0.7 * noise(k, salt + 2)) / fans if k < fans else (-0.99, 0.99)[k - fans]
@@ -246,6 +253,27 @@ def pad(c, x, base, hw, th, rise, look, salt, peak=2.4, point=0.0, floor=UNDER):
     return tops
 
 
+def twigs(c, p, salt):
+    """Bare twigs reaching down and out from a pad's flat underside: the ramified branch tips showing."""
+    out = 1 if p.rise >= 0 else -1
+    count = max(2, round(p.hw * (0.3 + 0.3 * c.scale)))
+    for n in range(count):
+        t = -0.85 + 1.7 * (n + noise(n, salt + 80)) / count
+        x, y = p.x + t * p.hw, p.base - abs(p.rise) * (t * out + 1) / 2 + 0.3
+        reach = 1.0 + 1.0 * noise(n, salt + 81)
+        a = 1.57 + (noise(n, salt + 82) - 0.5) * 1.6 + 0.5 * t
+        c.line(x, y, x + math.cos(a) * reach, y + math.sin(a) * reach, BARK[2 + n % 2],
+               lambda i, j: (i, j) not in c.px and (j + 0.5) / c.scale < SOIL_Y - 0.5)
+
+
+def puff(c, p, look, salt):
+    """A small pad perched on top of a big one, toward its inner end: the pads of a ramified tree grow pads."""
+    out = 1 if p.rise >= 0 else -1
+    t = -0.45 * out
+    top = p.base - abs(p.rise) * (t * out + 1) / 2 - 0.9 * p.th
+    pad(c, p.x + t * p.hw, top + 1.0, p.hw * 0.38, 1.8, 0.0, look, salt, 2.0, 0.0, top + 1.0)
+
+
 def candle(c, i, j):
     """A candle, a new silvery shoot, standing on the pad top at pixel (i, j) (its foot just above it): pale silver
     with a tan tip."""
@@ -263,18 +291,28 @@ def tuft(c, x, y, r, look, salt):
 
 
 def roots(c, g, look):
-    """The trunk's foot over the soil: a flare from thickening trunk, nebari spreading from established."""
+    """The trunk's foot over the soil: a flare from thickening trunk, wider from established."""
     if during(g, "thickening trunk"):
         c.blob(CX, BASE_Y - 0.4, look.base * 0.75, look.flare, BARK[1:], jitter=0.3, where=lambda x, y: y < BASE_Y)
-    if during(g, "established"):
-        for side in (-1, 1):
-            for k, (born, reach) in enumerate(ROOTS):
-                if during(g, born):
-                    end = CX + side * reach * look.spread
-                    path = [(CX + side * look.base * 0.25, BASE_Y - 1.4 - 0.3 * k),
-                            (CX + side * look.base * 0.5, BASE_Y - 0.6), (end, SOIL_Y + 1.8)]
-                    bark_stroke(c, path, (1.3 + 0.2 * look.base / 5, 0.5), min(look.rough, 0.7), salt=9 + k,
-                                lift=0.25, floor=SOIL_Y + 1.6)
+
+
+def stone(c):
+    """A big mossy stone on the soil at the left, standing in front of the lowest tier's underside."""
+    cover = c.blob(17.2, 20.6, 4.2, 3.6, STONE, jitter=0.3, lump=0.12, salt=5, where=lambda x, y: y < 22.6 and x > 13.9)
+    c.scatter(cover, MOSS[1:], 0.3, salt=7, test=lambda i, j, s: j < 19.6 * c.scale)
+    c.blob(16.6, 17.9, 3.0, 1.3, MOSS, jitter=0.3, lump=0.25, salt=6, where=lambda x, y: y < 22.6)
+
+
+def nebari(c, g, look):
+    """The roots spread over the soil from established, in front of the stone."""
+    for k, (side, born, reach) in enumerate(NEBARI):
+        if during(g, born):
+            reach = min(reach * look.spread, 9.4)
+            foot = (CX + side * look.base * 0.45, SOIL_Y - 0.9)
+            path = art.spline([foot, (CX + side * (look.base * 0.4 + reach * 0.45), SOIL_Y - 0.2),
+                               (CX + side * reach, SOIL_Y + 1.3)], 4)
+            bark_stroke(c, path, (2.6 + 0.3 * look.base / 5, 0.8), min(look.rough, 0.7), salt=9 + k, lift=0.3,
+                        floor=SOIL_Y + 1.5)
 
 
 def wire(c, path, w0, w1):
@@ -324,10 +362,12 @@ def drift(c, count, colors, salt):
 def accent(c):
     """A little slate pot of grass beside the pot, on the stand."""
     c.block(38.6, 26.4, 43.6, 28.4, SLATE, taper=0.8, rounding=0.3)
-    for k, (dx, lean, h) in enumerate(((-1.4, -0.7, 3.6), (-0.5, -0.2, 4.6), (0.5, 0.25, 4.0), (1.4, 0.7, 3.2))):
+    for k, (dx, lean, h) in enumerate(((-1.4, -0.7, 4.2), (-0.5, -0.2, 5.6), (0.5, 0.25, 4.8), (1.4, 0.7, 3.8))):
         x = 41.1 + dx
         c.stroke(art.spline([(x, 26.8), (x + lean * h * 0.4, 26.8 - h * 0.65), (x + lean * h, 26.8 - h)], 3), 0.9, 0.3,
                  GRASS, salt=k)
+        if k % 2:
+            c.blob(x + lean * h, 26.8 - h, 0.6, 0.6, FLOWER, jitter=0.0)
 
 
 def clay(c, x0, y0, x1, y1, taper=0.0, under=0.0, lit=0.0, salt=0):
@@ -378,12 +418,14 @@ def ground(c, g):
         c.line(20.5, 22.0, 22.4, 21.6, SOIL[0])
         c.line(25.5, 22.0, 27.5, 21.7, SOIL[0])
     if during(g, "refined", "established"):
-        c.scatter((14.3, SOIL_Y, 33.7, 22.6), MOSS, 0.4)
+        c.scatter((14.3, SOIL_Y, 33.7, 22.6), MOSS, 0.5)
+        for k, x in enumerate((16.5, 19.5, 28.8, 31.8)):
+            c.blob(x, 21.7, 1.9, 0.9, MOSS, lump=0.2, salt=20 + k, where=above_rim)
     if during(g, "established"):
         for k in range(8):
-            c.blob(15 + 2.8 * k, 21.6, 2.4, 1.4, MOSS, lump=0.2, salt=k, where=above_rim)
-        c.blob(17.4, 21.2, 3.9, 2.3, STONE, jitter=0.3, lump=0.12, salt=5, where=lambda x, y: y < 22.6 and x > 14.4)
-        c.blob(16.6, 19.7, 1.6, 0.9, MOSS, jitter=0.3, salt=6)
+            c.blob(15 + 2.8 * k, 21.3, 2.4, 1.6, MOSS, lump=0.2, salt=k, where=above_rim)
+        for k in range(3):
+            c.blob(29.5 + 2.2 * k, 20.9, 1.9, 1.5, MOSS, lump=0.2, salt=30 + k, where=above_rim)
     if during(g, "venerable"):
         c.scatter((14.3, SOIL_Y, 33.7, 22.4), OLD, 0.12, salt=5, run=2)
     if during(g, "show tree"):
@@ -430,7 +472,8 @@ def place(g, look):
     for n, spec in enumerate(PADS + (CROWN,)):
         if not during(g, spec.born):
             continue
-        hw, th = max(spec.hw * look.size, 0.9), max(spec.th * look.size ** 0.5 * look.thick, 1.0)
+        wide = look.child if spec.parent is not None else 1 + look.lowest * (n in LOWEST_TIER)
+        hw, th = max(spec.hw * look.size * wide, 0.9), max(spec.th * look.size ** 0.5 * look.thick, 1.0)
         if spec.parent is not None:
             near = out[spec.parent]
             side = 1 if near.x > near.ax else -1
@@ -462,14 +505,17 @@ class Look:
         self.bend = steps(g, BEND)
         self.rough = steps(g, ROUGH)
         self.lift = 0.15 * (1 - self.rough) + steps(g, (("mature", 0.13),))   # the plates of an old bark stand out
-        self.flare = 1.3 + steps(g, (("mature", 1.0),))
+        self.flare = 1.3 + steps(g, (("established", 0.7), ("mature", 1.2)))
         self.spread = 1 + steps(g, (("mature", 0.14),))   # how far the nebari reaches
         self.reach = steps(g, REACH)
         self.size = steps(g, SIZE)
         self.clumps = steps(g, (("ramified", 3.4),))
-        self.notch = steps(g, (("ramified", 1.5),))
+        self.notch = steps(g, (("ramified", 2.2),))
         self.thick = 1.0 + steps(g, (("layered pads", 0.3),))
+        self.child = steps(g, CHILD)
+        self.lowest = steps(g, LOWEST)
         self.gaps = steps(g, GAPS)
+        self.lit = steps(g, (("refined", 0.16),))
         self.fringe = steps(g, (("ramified", 0.5), ("refined", 0.8), ("mature", 1.0)))
         self.tones = ([TONES[0][1]] + [tones for name, tones in TONES if during(g, name)])[-1]
         self.glow = -0.12 + steps(g, (("venerable", 0.06),))   # how lit the needle tips are
@@ -516,6 +562,10 @@ def tree(c, g, look):
             continue
         tops = pad(c, p.x, p.base, p.hw, p.th, p.rise, look, 10 * k, 1.5 if crown else 2.4, 0.8 if crown else 0.0,
                    p.spec.floor)
+        if during(g, "ramified") and not crown:
+            twigs(c, p, 10 * k)
+            if p.spec.parent is None:
+                puff(c, p, look, 10 * k + 5)
         for born, share in p.spec.candles:
             if during(g, born):
                 i = math.floor((p.x + share * p.hw) * c.scale)
@@ -525,6 +575,9 @@ def tree(c, g, look):
         front = bark_stroke(c, path, look.widths, look.rough, dead=shaft, lift=look.lift, ceiling=CROWN.base + 0.6)
         if during(g, "ancient"):
             c.scatter(front, LICHEN, 0.05, salt=4, test=lambda i, j, s: s > 0.3 and (i, j) in c.px)
+    if during(g, "established"):
+        stone(c)
+        nebari(c, g, look)
     deadwood(c, g, placed, look)
     if during(g, "ancient"):
         drift(c, 7, OLD, 21)
