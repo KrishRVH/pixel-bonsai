@@ -6,6 +6,7 @@ interface every variety keeps:
   SIGNATURE    colors that mark it: every frame from "young tree" on holds one at scale 0.6, no other variety draws one
   pixels(g, scale=1.0)   {(x, y): "rrggbb"} for age g in [0, 1] on a canvas of art.size(scale), the same every call
 """
+import copy
 import math
 from collections import namedtuple
 
@@ -48,10 +49,11 @@ TRUNK = ((0.0, 0.0), (0.1, -0.8), (0.22, -2.0), (0.4, -0.3), (0.55, 2.0), (0.68,
 HEIGHT = (("sprout", 3.0), ("seedling", 6.0), ("sapling", 9.0), ("whip", 14.0), ("young tree", 15.5),
           ("first branches", 16.8), ("thickening trunk", 17.8), ("first styling", 18.8), ("shaped", FULL))
 WIDTH = (("sprout", 0.7), ("whip", 1.2), ("young tree", 1.9), ("first branches", 2.3), ("thickening trunk", 4.0),
-         ("shaped", 5.0), ("mature", 5.6), ("ancient", 6.4))
+         ("shaped", 5.0), ("mature", 7.6), ("ancient", 8.6))
 TAPER = (("sprout", 0.9), ("young tree", 0.6), ("thickening trunk", 0.42), ("shaped", 0.4))
 BEND = (("young tree", 0.15), ("first wiring", 0.6), ("thickening trunk", 0.85), ("first styling", 1.0))
-ROUGH = (("thickening trunk", 0.25), ("shaped", 0.5), ("mature", 0.85), ("ancient", 1.0))
+ROOTS = (("established", 4.2), ("established", 7.0), ("mature", 9.6))   # the nebari: each root's stage and its reach
+ROUGH = (("thickening trunk", 0.25), ("shaped", 0.5), ("mature", 1.0))
 REACH = (("young tree", 0.3), ("first branches", 0.45), ("thickening trunk", 0.6), ("first styling", 0.8),
          ("shaped", 1.0))
 SIZE = (("young tree", 0.22), ("first branches", 0.27), ("thickening trunk", 0.34), ("first styling", 0.62),
@@ -59,23 +61,29 @@ SIZE = (("young tree", 0.22), ("first branches", 0.27), ("thickening trunk", 0.3
         ("venerable", 1.04))
 GAPS = (("refined", 0.3), ("mature", 0.45))
 
-Pad = namedtuple("Pad", "inner base hw th rise born candles parent")
+Pad = namedtuple("Pad", "inner base hw th rise born candles parent back floor", defaults=((), None, False, UNDER))
 # inner: the distance from the trunk's axis to the pad's inner end (negative to its left), base: the underside y at the
 # inner end, hw and th: its half width and the height of its dome, rise: how far its outer end stands higher, born:
 # its stage, candles: the (stage, share of hw from the middle) of each candle on top, parent: the pad it grows from
-# (inner and base are then from that pad's outer end)
+# (inner and base are then from that pad's outer end), back: a pad behind the trunk, in shadow, floor: the lowest y
+# any of it reaches
 PADS = (
     Pad(-3.6, 18.9, 6.0, 3.0, 1.0, "young tree", (("shaped", -0.8),), None),
     Pad(3.0, 12.6, 5.0, 2.6, 0.8, "young tree", (("shaped", 0.3), ("venerable", -0.5)), None),
     Pad(3.6, 18.5, 5.4, 3.0, 0.8, "first branches", (), None),
     Pad(-3.0, 12.8, 4.6, 2.6, 0.8, "first branches", (("layered pads", -0.4),), None),
-    Pad(0.0, -1.0, 2.3, 2.2, 0.6, "layered pads", (("refined", 0.6),), 2),
-    Pad(0.0, -1.0, 2.2, 1.8, 0.6, "layered pads", (("venerable", 0.0),), 3))
+    Pad(0.0, -1.8, 2.3, 2.2, 0.6, "layered pads", (("refined", 0.6),), 1),
+    Pad(0.0, -1.8, 2.2, 1.8, 0.6, "layered pads", (("venerable", 0.0),), 3),
+    Pad(-2.2, 2.2, 2.7, 2.2, -0.8, "layered pads", (), 0, False, 21.6),
+    Pad(0.5, 2.2, 2.7, 2.2, -0.8, "layered pads", (), 2, False, 21.6),
+    Pad(-0.4, 15.4, 5.6, 2.2, 0.0, "layered pads", (), None, True),
+    Pad(0.6, 9.8, 4.6, 1.8, 0.0, "layered pads", (), None, True))
 CROWN = Pad(0.0, 5.9, 4.2, 2.6, 0.0, "young tree", (("shaped", 0.0), ("venerable", -0.6)), None)
 DIP = 1.4              # how far below a pad its branch leaves the trunk
 JIN = (  # the pad (an index of PADS, CROWN being -1) whose outer end it grows from, angle (radians, y down), length,
          # stage
-    (3, -2.2, 4.0, "old"), (1, -0.9, 3.8, "old"), (-1, -2.3, 3.4, "old"), (4, -0.7, 3.2, "venerable"))
+    (5, -2.2, 4.6, "old"), (4, -0.9, 4.4, "old"), (-1, -2.3, 3.8, "old"), (7, -0.6, 3.8, "venerable"))
+STUBS = ((7.5, -0.45, 4.2, "old"), (13.0, -2.7, 3.8, "old"))   # a jin on the trunk: its height, angle, length, stage
 PLATE = (2.8, 3.2)     # a bark plate's width and length in pixels, so a larger scale shows more plates
 
 
@@ -88,18 +96,23 @@ def trunk_x(share, bend):
     return CX + bend * pts[-1][1]
 
 
+def trunk_width(look, share):
+    """The trunk's width at share of its full height."""
+    return look.base * (1 - (1 - look.taper) * share ** 0.8)
+
+
 def trunk_at(h, bend):
     """The trunk's point h units above its foot."""
     return trunk_x(h / FULL, bend), BASE_Y - h
 
 
-def bark(c, cells, half, rough, salt=0, dead=None, start=0.0, lift=0.0):
+def bark(c, cells, half, rough, salt=0, dead=None, start=0.0, lift=0.0, floor=BASE_Y, ceiling=0.0):
     """Paint a stroke's trace (c.trace) as plated bark: lit plates split by fissures, rust in the cracks. half(f) is
     its half width a fraction f along it, dead(u, across) says where deadwood bares it, start the distance along the
-    tree this stroke begins at. Nothing is painted below the soil."""
+    tree this stroke begins at. Nothing is painted below the floor y (the trunk's foot in the soil)."""
     cover = {}
     for (i, j), (u, f, across, shade) in cells.items():
-        if (j + 0.5) / c.scale > BASE_Y:
+        if not ceiling <= (j + 0.5) / c.scale <= floor:
             continue
         u += start
         col = across * half(f) * c.scale / PLATE[0]
@@ -122,14 +135,14 @@ def bark(c, cells, half, rough, salt=0, dead=None, start=0.0, lift=0.0):
     return cover
 
 
-def bark_stroke(c, path, widths, rough, salt=0, dead=None, lift=0.0):
+def bark_stroke(c, path, widths, rough, salt=0, dead=None, lift=0.0, floor=BASE_Y, ceiling=0.0):
     """A stroke of bark along a path, widths (w0, w1, ...) apart evenly along it."""
     cover, start = {}, 0.0
     for k, (w0, w1) in enumerate(zip(widths, widths[1:])):
         lo, hi = k * (len(path) - 1) // (len(widths) - 1), (k + 1) * (len(path) - 1) // (len(widths) - 1)
         part = path[lo:hi + 1]
         half = lambda f: (w0 + (w1 - w0) * f) / 2  # noqa: E731
-        cover.update(bark(c, c.trace(part, w0, w1), half, rough, salt, dead, start, lift))
+        cover.update(bark(c, c.trace(part, w0, w1), half, rough, salt, dead, start, lift, floor, ceiling))
         start += sum(math.dist(a, b) for a, b in zip(part, part[1:]))
     return cover
 
@@ -154,10 +167,30 @@ def needles(c, x, y, length, count, colors, a0, a1, salt, bias=0.0, test=None, s
         c.line(*mid, x + math.cos(a) * reach, y + math.sin(a) * reach, tone(colors, lit + 0.12 + shift), test)
 
 
-def pad(c, x, base, hw, th, rise, look, salt, peak=2.4, point=0.0):
+def sub_pads(c, x, hw, look, salt):
+    """The sub-pads a pad breaks into from ramified: [(first pixel column, width in pixels)] across it."""
+    out, i, end = [], math.floor((x - hw) * c.scale), math.ceil((x + hw) * c.scale)
+    while i < end:
+        w = max(2, round(look.clumps * c.scale ** 0.5 * (0.7 + 0.6 * noise(len(out), salt + 70))))
+        out.append((i, w))
+        i += w
+    return out
+
+
+def dome(parts, i):
+    """How far into its clump the pixel column i is: 0 at a seam, 1 in the middle."""
+    for first, w in parts:
+        if first <= i < first + w:
+            return math.sin(math.pi * (i - first + 0.5) / w)
+    return 1.0
+
+
+def pad(c, x, base, hw, th, rise, look, salt, peak=2.4, point=0.0, floor=UNDER):
     """A pad of needles: a flat underside at y = base at its inner end and its outer end rise higher, a domed, scalloped
-    top, and fans of lit needles along the top and at the ends, a leader of them on a pointed top (point). A larger
-    scale draws more fans. Returns the pixel row of its top in each column."""
+    top, and fans of lit needles along the top and at the ends, a leader of them on a pointed top (point). From
+    ramified it breaks into sub-pads, each a dome with its own fan; nothing reaches below the y floor. A larger scale
+    draws more fans. Returns the pixel row of its top in each column."""
+    parts = sub_pads(c, x, hw, look, salt) if look.clumps else ()
     p = noise(salt, 11) * 6.283
     out = 1 if rise >= 0 else -1                 # the side its outer end is on
     lift = lambda t: abs(rise) * (t * out + 1) / 2   # noqa: E731
@@ -167,12 +200,13 @@ def pad(c, x, base, hw, th, rise, look, salt, peak=2.4, point=0.0):
         t = (px - x) / hw
         if abs(t) >= 1:
             continue
-        bottom = base - lift(t)
-        high = ridge(t)
-        if not high <= py <= min(bottom, UNDER):
+        u = dome(parts, i) if parts else 1.0
+        bottom = base - lift(t) - 0.5 * look.notch * (1 - u)
+        high = ridge(t) + look.notch * (1 - u ** 0.6)
+        if not high <= py <= min(bottom, floor):
             continue
         d = (py - high) / max(bottom - high, 1.0)
-        c.put(i, j, tone(look.body, clamp(0.74 - 0.75 * d - 0.12 * t), 0.5, noise(i, j, salt)))
+        c.put(i, j, tone(look.body, clamp(0.74 - 0.75 * d - 0.12 * t - 0.35 * (1 - u) ** 1.5), 0.5, noise(i, j, salt)))
     fans = max(3, round(hw * 2 * c.scale * (1 + 0.5 * look.fringe) / 2.2))
     for k in range(fans + 2):
         t = -0.96 + 1.92 * (k + 0.15 + 0.7 * noise(k, salt + 2)) / fans if k < fans else (-0.99, 0.99)[k - fans]
@@ -183,19 +217,26 @@ def pad(c, x, base, hw, th, rise, look, salt, peak=2.4, point=0.0):
         if point and abs(t) < 0.3:
             a, length = -1.57 + t, length + point
         needles(c, x + t * hw, fy, length, 4, look.tips, a - 0.6, a + 0.6, salt + k, bias=look.glow,
-                test=above(c, min(bottom, UNDER)))
+                test=above(c, min(bottom, floor)))
     for n in range(round(hw * c.scale * 0.8) * (c.scale >= 1.3)):
         t = (noise(n, salt + 40) - 0.5) * 1.7
         bottom = base - lift(t)
         fy = bottom - (bottom - ridge(t)) * (0.35 + 0.35 * noise(n, salt + 41))
         a = -1.57 + 0.7 * t
         needles(c, x + t * hw, fy, 1.3, 2, look.tips, a - 0.4, a + 0.4, salt + 60 + n, bias=look.glow - 0.1,
-                test=above(c, min(bottom, UNDER)))
+                test=above(c, min(bottom, floor)))
     for n in range(round(look.gaps * hw * c.scale / 2)):
         i, j = c.at(x + (noise(n, salt + 20) - 0.5) * 1.3 * hw, base - th * (0.25 + 0.3 * noise(n, salt + 21)))
         for hole in ((i, j), (i + 1, j)):
             if c.px.get(hole) in PAD_COLORS:
                 del c.px[hole]
+    for first, w in parts:
+        mid = first + w // 2
+        x0 = (mid + 0.5) / c.scale
+        top = ridge((x0 - x) / hw) + look.notch * 0.1
+        if abs(x0 - x) < hw and noise(mid, salt + 73) < 0.8:
+            needles(c, x0, top, 0.8 + 0.5 * noise(mid, salt + 74), 3, look.tips, -2.0, -1.1, salt + mid,
+                    bias=look.glow, test=above(c, min(base, floor)))
     tops = {}
     for i in range(math.floor((x - hw) * c.scale), math.ceil((x + hw) * c.scale)):
         rows = [j for j in range(max(0, math.floor((base - th - 3) * c.scale)), c.h)
@@ -224,14 +265,16 @@ def tuft(c, x, y, r, look, salt):
 def roots(c, g, look):
     """The trunk's foot over the soil: a flare from thickening trunk, nebari spreading from established."""
     if during(g, "thickening trunk"):
-        c.blob(CX, BASE_Y - 0.4, look.base * 0.75, 1.3, BARK[1:], jitter=0.3, where=lambda x, y: y < BASE_Y)
+        c.blob(CX, BASE_Y - 0.4, look.base * 0.75, look.flare, BARK[1:], jitter=0.3, where=lambda x, y: y < BASE_Y)
     if during(g, "established"):
         for side in (-1, 1):
-            for k in (0, 1):
-                reach = look.base * (0.6 + 0.25 * k) + 2.5 + 2.4 * k
-                path = [(CX + side * look.base * 0.25, BASE_Y - 1.4), (CX + side * look.base * 0.5, BASE_Y - 0.6),
-                        (CX + side * reach, SOIL_Y + 1.4)]
-                bark_stroke(c, path, (1.3 + 0.2 * look.base / 5, 0.5), look.rough, salt=9 + k)
+            for k, (born, reach) in enumerate(ROOTS):
+                if during(g, born):
+                    end = CX + side * reach * look.spread
+                    path = [(CX + side * look.base * 0.25, BASE_Y - 1.4 - 0.3 * k),
+                            (CX + side * look.base * 0.5, BASE_Y - 0.6), (end, SOIL_Y + 1.8)]
+                    bark_stroke(c, path, (1.3 + 0.2 * look.base / 5, 0.5), min(look.rough, 0.7), salt=9 + k,
+                                lift=0.25, floor=SOIL_Y + 1.6)
 
 
 def wire(c, path, w0, w1):
@@ -240,17 +283,26 @@ def wire(c, path, w0, w1):
            pitch=2.6, twist=0.4, duty=0.28, grow=0.6, test=lambda i, j: (j + 0.5) / c.scale < BASE_Y)
 
 
-def deadwood(c, g, placed):
-    """Bleached jin, stubs of dead branches, from old."""
+def jin(c, x, y, angle, length, width, salt):
+    """A bleached stub of a dead branch from (x, y), tapering to a point."""
+    end = (x + math.cos(angle) * length, y + math.sin(angle) * length)
+    mid = (x + math.cos(angle) * length * 0.5 + 0.3, y + math.sin(angle) * length * 0.5 - 0.3)
+    cover = c.stroke(art.spline([(x, y), mid, end], 3), width, 0.3, DEAD, jitter=0.3, salt=salt)
+    c.scatter(cover, DEAD[0], 0.12, salt=3)
+
+
+def deadwood(c, g, placed, look):
+    """Bleached jin, stubs of dead branches, from old: on the ends of pads and on the trunk."""
     for k, (which, angle, length, born) in enumerate(JIN):
         if during(g, born):
             p = placed[which]
             side = 1 if p.x > p.ax else -1
-            x, y = p.x + side * (p.hw + 0.4), p.base - p.th * 0.4
-            end = (x + math.cos(angle) * length, y + math.sin(angle) * length)
-            mid = (x + math.cos(angle) * length * 0.5 + 0.3, y + math.sin(angle) * length * 0.5 - 0.3)
-            cover = c.stroke(art.spline([(x, y), mid, end], 3), 1.0, 0.2, DEAD, jitter=0.3, salt=k)
-            c.scatter(cover, DEAD[0], 0.12, salt=3)
+            jin(c, p.x + side * (p.hw + 0.4), p.base - p.th * 0.4, angle, length, 1.5, k)
+    for k, (h, angle, length, born) in enumerate(STUBS):
+        if during(g, born):
+            x, y = trunk_at(h, look.bend)
+            side = 1 if math.cos(angle) > 0 else -1
+            jin(c, x + side * trunk_width(look, h / FULL) * 0.3, y, angle, length, 2.2, 9 + k)
 
 
 def shari(u, across):
@@ -329,8 +381,9 @@ def ground(c, g):
         c.scatter((14.3, SOIL_Y, 33.7, 22.6), MOSS, 0.4)
     if during(g, "established"):
         for k in range(8):
-            c.blob(15 + 2.8 * k, 21.7, 2.4, 1.0, MOSS, lump=0.2, salt=k, where=above_rim)
-        c.blob(17.5, 21.5, 2.8, 1.3, STONE, where=above_rim)
+            c.blob(15 + 2.8 * k, 21.6, 2.4, 1.4, MOSS, lump=0.2, salt=k, where=above_rim)
+        c.blob(17.4, 21.2, 3.9, 2.3, STONE, jitter=0.3, lump=0.12, salt=5, where=lambda x, y: y < 22.6 and x > 14.4)
+        c.blob(16.6, 19.7, 1.6, 0.9, MOSS, jitter=0.3, salt=6)
     if during(g, "venerable"):
         c.scatter((14.3, SOIL_Y, 33.7, 22.4), OLD, 0.12, salt=5, run=2)
     if during(g, "show tree"):
@@ -377,7 +430,7 @@ def place(g, look):
     for n, spec in enumerate(PADS + (CROWN,)):
         if not during(g, spec.born):
             continue
-        hw, th = max(spec.hw * look.size, 0.9), max(spec.th * look.size ** 0.5, 1.0)
+        hw, th = max(spec.hw * look.size, 0.9), max(spec.th * look.size ** 0.5 * look.thick, 1.0)
         if spec.parent is not None:
             near = out[spec.parent]
             side = 1 if near.x > near.ax else -1
@@ -390,7 +443,9 @@ def place(g, look):
             h = (BASE_Y - spec.base) * k
             tx = trunk_x(h / FULL, look.bend)
             side = 1 if spec.inner > 0 else -1
-            x, base = tx + spec.inner * look.reach + side * hw, BASE_Y - h
+            x, base = tx + spec.inner * look.reach + side * (hw + 0.25 * max(look.base - 5.0, 0.0)), BASE_Y - h
+            if spec.back:
+                x = tx + spec.inner
             ax, ay = trunk_at(max(h - DIP * k, 0.5), look.bend)
         out[n] = Placed(ax, ay, x, base, hw, th, spec.rise * (1 if x >= ax else -1), spec)
     return list(out.values())
@@ -406,13 +461,21 @@ class Look:
         self.widths = [self.base * (1 - (1 - self.taper) * f ** 0.8) for f in (0, 1 / 3, 2 / 3, 1)]
         self.bend = steps(g, BEND)
         self.rough = steps(g, ROUGH)
+        self.lift = 0.15 * (1 - self.rough) + steps(g, (("mature", 0.13),))   # the plates of an old bark stand out
+        self.flare = 1.3 + steps(g, (("mature", 1.0),))
+        self.spread = 1 + steps(g, (("mature", 0.14),))   # how far the nebari reaches
         self.reach = steps(g, REACH)
         self.size = steps(g, SIZE)
+        self.clumps = steps(g, (("ramified", 3.4),))
+        self.notch = steps(g, (("ramified", 1.5),))
+        self.thick = 1.0 + steps(g, (("layered pads", 0.3),))
         self.gaps = steps(g, GAPS)
         self.fringe = steps(g, (("ramified", 0.5), ("refined", 0.8), ("mature", 1.0)))
         self.tones = ([TONES[0][1]] + [tones for name, tones in TONES if during(g, name)])[-1]
         self.glow = -0.12 + steps(g, (("venerable", 0.06),))   # how lit the needle tips are
         self.body, self.tips = self.tones[1:5], self.tones[2:]
+        self.back = copy.copy(self)    # the same, in the shade of the pads in front
+        self.back.body, self.back.tips, self.back.glow = self.tones[0:4], self.tones[1:4], self.glow - 0.1
 
 
 def tree(c, g, look):
@@ -422,7 +485,7 @@ def tree(c, g, look):
     young = not during(g, "first styling")
     branches = []
     for k, p in enumerate(placed):
-        if p.spec is CROWN or p.spec.parent is not None:
+        if p.spec is CROWN or p.spec.parent is not None or p.spec.back:
             continue
         side = 1 if p.x > p.ax else -1
         if young:
@@ -433,28 +496,36 @@ def tree(c, g, look):
         branch = art.spline([(p.ax, p.ay), mid, end], 4)
         c.stroke(branch, 0.18 * look.base + 0.4, 0.6, BARK[1:], salt=k)
         branches.append(branch)
+    for k, p in enumerate(placed):
+        if p.spec.back:
+            pad(c, p.x, p.base, p.hw, p.th, p.rise, look.back, 10 * k, 2.0, 0.0, p.spec.floor)
     roots(c, g, look)
     shaft = lambda u, across: during(g, "ancient") and shari(u, across)  # noqa: E731
-    trunk = bark_stroke(c, path, look.widths, look.rough, dead=shaft, lift=0.15 * (1 - look.rough))
+    bark_stroke(c, path, look.widths, look.rough, dead=shaft, lift=look.lift)
     if during(g, "first wiring", "thickening trunk"):
         wire(c, path, look.base, look.base * look.taper)
         for branch in branches:
             wire(c, branch, 0.9, 0.6)
-    if during(g, "ancient"):
-        c.scatter(trunk, LICHEN, 0.05, salt=4, test=lambda i, j, s: s > 0.3 and (i, j) in c.px)
     for k, p in enumerate(placed):
         if young:
             tx, ty = (p.x, p.base - 0.3 * p.hw) if p.spec is not CROWN else (p.ax, p.ay - 0.5)
             tuft(c, tx, ty, p.hw if p.spec is not CROWN else max(p.hw, 3.0), look, 10 * k)
             continue
         crown = p.spec is CROWN
-        tops = pad(c, p.x, p.base, p.hw, p.th, p.rise, look, 10 * k, 1.5 if crown else 2.4, 0.8 if crown else 0.0)
+        if p.spec.back:
+            continue
+        tops = pad(c, p.x, p.base, p.hw, p.th, p.rise, look, 10 * k, 1.5 if crown else 2.4, 0.8 if crown else 0.0,
+                   p.spec.floor)
         for born, share in p.spec.candles:
             if during(g, born):
                 i = math.floor((p.x + share * p.hw) * c.scale)
                 if i in tops:
                     candle(c, i, tops[i])
-    deadwood(c, g, placed)
+    if during(g, "mature"):    # from here the trunk stands in front of the pads, so its width and plates show
+        front = bark_stroke(c, path, look.widths, look.rough, dead=shaft, lift=look.lift, ceiling=CROWN.base + 0.6)
+        if during(g, "ancient"):
+            c.scatter(front, LICHEN, 0.05, salt=4, test=lambda i, j, s: s > 0.3 and (i, j) in c.px)
+    deadwood(c, g, placed, look)
     if during(g, "ancient"):
         drift(c, 7, OLD, 21)
 
