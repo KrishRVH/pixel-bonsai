@@ -70,3 +70,7 @@ python3 -m unittest discover -s tests
 ```
 
 The drawing code and tests were extracted from [herdr-minimap](https://github.com/KrishRVH/herdr-minimap). Herdr uses the same tree in its navigation column.
+
+## License
+
+[MIT](LICENSE).
