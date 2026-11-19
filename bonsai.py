@@ -86,13 +86,17 @@ def save(path, data):
     os.replace(path + ".tmp", path)
 
 
-def stored():
-    """The tokens counted so far, from the store alone."""
+def stored_days():
     try:
         with open(store_path(), encoding="utf-8") as f:
-            return sum(json.load(f).get("days", {}).values())
+            return json.load(f).get("days", {})
     except (OSError, ValueError, AttributeError):
-        return 0
+        return {}
+
+
+def stored():
+    """The tokens counted so far, from the store alone."""
+    return sum(stored_days().values())
 
 
 def transcripts():
@@ -182,17 +186,21 @@ def tokens(ledger=None):
     never shrink the lifetime tree; the total."""
     days = (ledger or Ledger().update()).days()
     path = store_path()
+    def merge():
+        kept = stored_days()
+        for day, count in days.items():
+            kept[day] = max(kept.get(day, 0), count)
+        return kept
+
     try:
-        with open(path, encoding="utf-8") as f:
-            kept = json.load(f).get("days", {})
-    except (OSError, ValueError, AttributeError):
-        kept = {}
-    for day, count in days.items():
-        kept[day] = max(kept.get(day, 0), count)
-    try:
-        save(path, {"days": kept})
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        # The standalone tree and a plugin pane may recount the same garden at once.
+        with open(path + ".lock", "a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            kept = merge()
+            save(path, {"days": kept})
     except OSError:
-        pass
+        kept = merge()
     return sum(kept.values())
 
 
