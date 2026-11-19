@@ -1,4 +1,5 @@
 """Local usage sources and the public, harness-independent CLI."""
+from contextlib import closing
 import json
 import os
 from pathlib import Path
@@ -95,7 +96,7 @@ class Harnesses(unittest.TestCase):
         os.environ["OPENCODE_DB"] = str(dbfile)
         tokens = {"input": 2, "output": 3, "reasoning": 4, "cache": {"read": 5, "write": 6}}
         data = {"time": {"completed": 1794312000000}, "role": "assistant", "tokens": tokens}
-        with sqlite3.connect(dbfile) as db:
+        with closing(sqlite3.connect(dbfile)) as db, db:
             db.execute("create table message (id text, time_updated integer, data text)")
             db.execute("insert into message values ('old', 1, ?)", (json.dumps(data),))
             db.execute("create table session_message (id text, type text, time_updated integer, data text)")
@@ -104,7 +105,7 @@ class Harnesses(unittest.TestCase):
                        (json.dumps(dict(data, time={})),))
         book = bonsai.Ledger("opencode").update()
         self.assertEqual(sum(book.days().values()), 40)
-        with sqlite3.connect(dbfile) as db:
+        with closing(sqlite3.connect(dbfile)) as db, db:
             db.execute("update session_message set data=?, time_updated=11 where id='next'", (json.dumps(data),))
         self.assertEqual(sum(book.update().days().values()), 60)
         self.assertEqual(sum(book.update().days().values()), 60)
