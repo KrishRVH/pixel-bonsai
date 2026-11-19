@@ -10,9 +10,9 @@ that variety has grown.
   VIEWS, VARIETIES     the two age mappings by view name, and the variety modules by name, in the order a switch
                        steps through them
   rows(px, ...)        a canvas's pixels as terminal lines of half blocks, two pixels to a cell
-  garden(), accrue(total), choose(name)
-                       each variety's own lifetime growth, kept beside the token store: tokens counted go to the
-                       variety selected when they are counted
+  garden(), accrue(total, today), choose(name), day_count(garden, name)
+                       each variety's own lifetime and day growth, kept beside the token store: tokens counted go to
+                       the variety selected when they are counted, for its day's tree and its lifetime tree alike
   Ledger               the transcripts' tokens (input, cache reads and writes, output), each API message once, read
                        incrementally: an update reads only what was appended since the last
   today()              the tokens since local midnight
@@ -196,12 +196,28 @@ def tokens(ledger=None):
     return sum(kept.values())
 
 
-# ---- the garden: each variety's own lifetime growth --------------------------------------------------------------
+# ---- the garden: each variety's own lifetime and day growth ------------------------------------------------------
+
+def no_day():
+    """A day record for no day yet: the first accrual with the day's tokens starts the real one."""
+    return {"date": "", "counted": 0, "grown": {name: 0 for name in VARIETIES}}
+
 
 def seeded(total):
     """A new garden: sakura continues the old tree, grown to total, and every other variety starts from seed."""
     return {"variety": DEFAULT, "grown": {name: total if name == DEFAULT else 0 for name in VARIETIES},
-            "counted": total}
+            "counted": total, "day": no_day()}
+
+
+def local_date(now=None):
+    return time.strftime("%Y-%m-%d", time.localtime(time.time() if now is None else now))
+
+
+def day_count(data, name, now=None):
+    """The tokens this variety has grown today: its share of the day record when that record is today's, else 0 (a
+    record from yesterday until the first accrual after midnight replaces it)."""
+    day = data.get("day") or {}
+    return day.get("grown", {}).get(name, 0) if day.get("date") == local_date(now) else 0
 
 
 def number(value):
@@ -211,17 +227,27 @@ def number(value):
 
 
 def garden(total=None):
-    """The garden as stored: the selected variety, the lifetime tokens grown by each, and the lifetime total already
-    handed out ("counted"). Absent or unreadable, it is seeded from total (the tokens counted so far, stored() when
-    None)."""
+    """The garden as stored: the selected variety, the lifetime tokens grown by each, the lifetime total already
+    handed out ("counted"), and the day record (its local date, the day's tokens already handed out and each
+    variety's share). Absent or unreadable, it is seeded from total (the tokens counted so far, stored() when None);
+    a garden from before day records, or with a damaged one, keeps its lifetime growth and gets no_day()."""
     try:
         with open(garden_path(), encoding="utf-8") as f:
             data = json.load(f)
         name = data["variety"] if data["variety"] in VARIETIES else DEFAULT
-        return {"variety": name, "grown": {n: number(data["grown"].get(n, 0)) for n in VARIETIES},
-                "counted": number(data["counted"])}
+        out = {"variety": name, "grown": {n: number(data["grown"].get(n, 0)) for n in VARIETIES},
+               "counted": number(data["counted"])}
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return seeded(stored() if total is None else total)
+    try:
+        day = data["day"]
+        if not isinstance(day["date"], str):
+            raise ValueError(day["date"])
+        out["day"] = {"date": day["date"], "counted": number(day["counted"]),
+                      "grown": {n: number(day["grown"].get(n, 0)) for n in VARIETIES}}
+    except (ValueError, KeyError, TypeError, AttributeError):
+        out["day"] = no_day()
+    return out
 
 
 def update(change, total=None):
@@ -241,14 +267,28 @@ def update(change, total=None):
     return data if data is not None else garden(total)
 
 
-def accrue(total):
+def accrue(total, today=None, now=None):
     """Hand the selected variety the lifetime tokens counted since the last call: total less what was already
-    handed out. The same total twice adds nothing, and a smaller one is ignored."""
+    handed out. The same total twice adds nothing, and a smaller one is ignored. With today (the tokens since local
+    midnight), the day's tokens are handed out the same way to the selected variety's day tree; the first call on a
+    new local date (or on a garden without a day record) starts the day afresh and gives the selected variety all of
+    today, since nothing recorded which variety was selected earlier in that day, so a minute that crosses midnight
+    lands on the right day."""
     def add(data):
         new = max(0, total - data["counted"])
         data["grown"][data["variety"]] += new
         data["counted"] = max(data["counted"], total)
-        return new > 0
+        changed = new > 0
+        if today is not None:
+            day, date = data["day"], local_date(now)
+            if day["date"] != date:
+                data["day"] = day = no_day()
+                day["date"], changed = date, True
+            fresh = max(0, today - day["counted"])
+            day["grown"][data["variety"]] += fresh
+            day["counted"] = max(day["counted"], today)
+            changed = changed or fresh > 0
+        return changed
     return update(add, total)
 
 
