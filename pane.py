@@ -172,7 +172,7 @@ def run_tree(view_file):
         view = "today"
 
     def recount():
-        ledger = bonsai.Ledger()  # the first update reads every transcript; later ones only what was appended
+        ledger = bonsai.HarnessUsage()  # the first update reads every transcript; later ones only what was appended
         while True:
             ledger.update()
             today, total = bonsai.today(ledger=ledger), bonsai.tokens(ledger)

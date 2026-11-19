@@ -20,8 +20,6 @@ that variety has grown.
                        (always from past days) never shrink the lifetime total
 Python 3.9, standard library.
 """
-import fcntl
-import glob
 import json
 import os
 import time
@@ -30,6 +28,7 @@ import art
 import maple
 import pine
 import sakura
+import usage
 
 DAY = 3e9                # tokens in a day for a fully venerable day's tree
 MATURE = 250e9           # lifetime tokens for a variety's full-grown tree
@@ -69,9 +68,9 @@ def rows(px, rgb=None, size=1, w=art.W, h=art.H):
     return out
 
 
-def store_path():
-    return os.path.join(os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"), "qd",
-                        "bonsai.json")
+def store_path(source="claude"):
+    name = "bonsai.json" if source == "claude" else f"bonsai-{source}-tokens.json"
+    return str(usage.state_dir() / name)
 
 
 def garden_path():
@@ -86,46 +85,55 @@ def save(path, data):
     os.replace(path + ".tmp", path)
 
 
-def stored_days():
+def stored_days(source="claude"):
     try:
-        with open(store_path(), encoding="utf-8") as f:
-            return json.load(f).get("days", {})
+        with open(store_path(source), encoding="utf-8") as f:
+            days = json.load(f).get("days")
+            if isinstance(days, dict):
+                return {day: count for day, count in days.items() if type(count) is int and count >= 0}
+            return {}
     except (OSError, ValueError, AttributeError):
         return {}
 
 
 def stored():
     """The tokens counted so far, from the store alone."""
-    return sum(stored_days().values())
+    return sum(sum(stored_days(name).values()) for name in (*usage.READERS, "opencode"))
 
 
 def transcripts():
-    return glob.glob(os.path.expanduser("~/.claude*/projects/**/*.jsonl"), recursive=True)
+    return list(usage.files("claude"))
 
 
 BLOCK = 1 << 20           # bytes read at a time: larger blocks raise the peak, not the speed
-USAGE_KEYS = ("input_tokens", "cache_creation_input_tokens", "cache_read_input_tokens", "output_tokens")
 
 
 class Ledger:
-    """Every API message's tokens in the transcripts, each message once (a message repeated in a line or in a resumed
+    """One source's tokens in the transcripts, each event once (a message repeated in a line or in a resumed
     copy counts once), by UTC minute. Transcripts only grow, so each update reads just the bytes appended since the
     last one: the bonsai pane keeps one ledger for its life, and a recount costs what was written since, not the
     gigabytes of history. A transcript Claude prunes keeps its count here; a replaced one is read again, which the
     message keys make harmless."""
 
-    def __init__(self):
+    def __init__(self, source="claude"):
+        self.source = source
+        self.database = usage.OpenCode() if source == "opencode" else None
+        self.context = {}   # per-file state retained between incremental reads
         self.read = {}       # path -> (inode, bytes read up to the last whole line)
         self.seen = set()    # hash of (message id, request id), which holds a few MB for years of messages
         self.minutes = {}    # "YYYY-MM-DDTHH:MM" (UTC) -> tokens
 
     def update(self, paths=None):
-        paths = transcripts() if paths is None else paths
-        for path in paths:
+        if self.database is not None:
+            self.database.update(self.credit)
+            return self
+        paths = usage.files(self.source) if paths is None else paths
+        for path in map(os.fspath, paths):
             try:
                 st = os.stat(path)
                 inode, at = self.read.get(path, (st.st_ino, 0))
                 if inode != st.st_ino or st.st_size < at:
+                    self.context.pop(path, None)
                     at = 0  # replaced or rewritten: read it again
                 with open(path, "rb") as f:
                     f.seek(at)
@@ -136,28 +144,37 @@ class Ledger:
                         if not end and len(block) == len(rest):
                             break
                         for line in block[:end].split(b"\n"):
-                            self.add(line)
+                            self.add(line, path)
                         at, rest = at + end, block[end:]
             except OSError:
                 continue
             self.read[path] = (st.st_ino, at)
         return self
 
-    def add(self, line):
-        if b'"usage"' not in line or b'"assistant"' not in line:
+    def add(self, line, path=""):
+        marker, reader = usage.READERS[self.source]
+        if marker not in line:
             return
         try:
             entry = json.loads(line)
-        except ValueError:
+            if isinstance(entry, dict):
+                result = reader(entry, path, self.context.setdefault(path, {}))
+                if result:
+                    self.credit(*result)
+        except (ValueError, TypeError, AttributeError, IndexError):
+            pass  # a malformed or unrelated transcript record
+
+    def credit(self, key, stamp, tokens):
+        if not tokens or key is None:
             return
-        message = entry.get("message") or {}
-        used = message.get("usage")
-        key = hash((message.get("id"), entry.get("requestId")))
-        if not message.get("id") or key in self.seen or not isinstance(used, dict):
+        try:
+            minute = usage.utc_time(stamp).strftime("%Y-%m-%dT%H:%M")
+            key = hash(key)
+        except (ValueError, TypeError, OSError, OverflowError):
             return
-        self.seen.add(key)
-        minute = (entry.get("timestamp") or "")[:16]
-        self.minutes[minute] = self.minutes.get(minute, 0) + sum(used.get(k) or 0 for k in USAGE_KEYS)
+        if key not in self.seen:
+            self.seen.add(key)
+            self.minutes[minute] = self.minutes.get(minute, 0) + tokens
 
     def since(self, stamp):
         """Tokens from this UTC stamp ("YYYY-MM-DDTHH:MM:SS", on a whole minute) on."""
@@ -170,6 +187,21 @@ class Ledger:
         return out
 
 
+class HarnessUsage:
+    """Keep separate high-water marks so pruning one harness never hides another's growth."""
+
+    def __init__(self):
+        self.ledgers = [Ledger(name) for name in (*usage.READERS, "opencode")]
+
+    def update(self):
+        for ledger in self.ledgers:
+            ledger.update()
+        return self
+
+    def since(self, stamp):
+        return sum(ledger.since(stamp) for ledger in self.ledgers)
+
+
 def midnight_utc(now=None):
     """Local midnight today as the UTC stamp transcripts use."""
     midnight = time.mktime(time.localtime(time.time() if now is None else now)[:3] + (0, 0, 0, 0, 0, -1))
@@ -178,16 +210,23 @@ def midnight_utc(now=None):
 
 def today(now=None, ledger=None):
     """The tokens since local midnight."""
-    return (ledger or Ledger().update()).since(midnight_utc(now))
+    return (ledger or HarnessUsage().update()).since(midnight_utc(now))
 
 
 def tokens(ledger=None):
     """Every token counted, with each UTC day's highest count kept in the store, so transcripts Claude prunes for age
     never shrink the lifetime tree; the total."""
-    days = (ledger or Ledger().update()).days()
-    path = store_path()
+    import fcntl
+    ledger = ledger or HarnessUsage().update()
+    if isinstance(ledger, HarnessUsage):
+        return sum(tokens(book) for book in ledger.ledgers)
+    days = ledger.days()
+    path = store_path(ledger.source)
+    if not days:
+        return sum(stored_days(ledger.source).values())
+
     def merge():
-        kept = stored_days()
+        kept = stored_days(ledger.source)
         for day, count in days.items():
             kept[day] = max(kept.get(day, 0), count)
         return kept
@@ -261,6 +300,7 @@ def garden(total=None):
 def update(change, total=None):
     """Apply change(garden) under the garden's lock and save it atomically when it reports a change (or the file is
     new); the garden as it is after. A state folder that cannot be written leaves the garden as it was read."""
+    import fcntl
     data = None
     try:
         path = garden_path()

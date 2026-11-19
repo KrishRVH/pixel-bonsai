@@ -13,6 +13,7 @@ import threading
 import time
 import unittest
 import zlib
+from unittest.mock import patch
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, os.path.join(HERE, ".."))
@@ -36,16 +37,8 @@ def transcripts_in(home):
     """Point the token counts at a home of fake transcripts and a store of its own."""
     folder = os.path.join(home, ".claude", "projects", "p")
     os.makedirs(os.path.join(folder, "sid", "subagents"))
-    saved = {k: os.environ.get(k) for k in ("HOME", "XDG_STATE_HOME")}
-    os.environ.update(HOME=home, XDG_STATE_HOME=os.path.join(home, "state"))
-    try:
+    with patch.dict(os.environ, {"HOME": home, "XDG_STATE_HOME": os.path.join(home, "state")}, clear=True):
         yield folder
-    finally:
-        for k, v in saved.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
 
 
 @contextlib.contextmanager
