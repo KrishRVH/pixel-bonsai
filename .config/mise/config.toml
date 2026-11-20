@@ -1,0 +1,49 @@
+# The catalog fixtures use lockfile format 3.
+min_version = "2026.9.16"
+
+[settings]
+lockfile = true
+
+[tools]
+gitleaks = "8.30.1"
+syft = "1.55.0"
+
+[tasks.secrets]
+description = "Scan the working tree for secrets"
+run = "gitleaks dir . --redact --no-banner"
+
+[tasks.sbom]
+description = "Generate a CycloneDX JSON SBOM for the project filesystem"
+run = """
+set -eu
+source_name="${SYFT_SOURCE_NAME:-$(basename "$PWD")}"
+source_version="${SYFT_SOURCE_VERSION:-0.0.0}"
+export SYFT_CHECK_FOR_APP_UPDATE="${SYFT_CHECK_FOR_APP_UPDATE:-false}"
+rm -rf sbom
+mkdir -p sbom
+syft scan dir:. --source-name "$source_name" --source-version "$source_version" --exclude ./sbom --exclude ./.git --output cyclonedx-json=sbom/sbom.cdx.json
+"""
+
+[tasks.fmt]
+description = "Format the project"
+depends = ["go:fmt"]
+
+[tasks."fmt:check"]
+description = "Check formatting"
+depends = ["go:fmt:check"]
+
+[tasks.lint]
+description = "Run static analysis and dependency checks"
+depends = ["go:lint"]
+
+[tasks.test]
+description = "Run the tests"
+depends = ["go:test"]
+
+[tasks.standards]
+description = "Run the standards workflow with autofixes"
+depends = ["go:standards"]
+
+[tasks."standards:check"]
+description = "Run the standards CI gate"
+depends = ["secrets", "hygiene", "go:standards:check"]
