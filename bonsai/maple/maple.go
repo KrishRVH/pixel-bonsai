@@ -1,10 +1,10 @@
 // Package maple draws a red Japanese maple (Acer palmatum) bonsai on the art kit.
 //
 // A seed in a nursery pot grows into a venerable specimen on a display stand. It is fine, dense, and fiery: tiers of
-// palmate leaves from deep crimson through scarlet and orange to gold, on a smooth grey trunk with a buttressed
+// palmate leaves from deep crimson through scarlet and orange to gold, on a smooth gray trunk with a buttressed
 // nebari, in an ivory pot.
 //
-// The tree is a trunk, the grey limbs that carry its pads of foliage, and the ground it stands on. A pad appears at
+// The tree is a trunk, the gray limbs that carry its pads of foliage, and the ground it stands on. A pad appears at
 // its stage and grows for a while, and the wire is on between two stages. The crown is tiers of pads with sky and
 // limbs showing through windows between them and, from Ramified, a lacy edge of twigs that fills out with age. From
 // Refined the windows open wide, each pad splits into a lit crest and a shadowed flank, and moss shows on the soil.
@@ -15,19 +15,17 @@
 // the pads rather than bigger blocks.
 package maple
 
-import (
-	"github.com/KrishRVH/pixel-bonsai/art"
-)
+import "github.com/KrishRVH/pixel-bonsai/art"
 
 var (
 	leaf     = art.Tones{0x5c0f2c, 0x8e1530, 0xb81c2e, 0xdc2f2a, 0xee5026, 0xf6802c, 0xfab238, 0xfee08a} // deep wine to pale gold
 	spring   = art.Tones{0x2e5f2e, 0x4c8c38, 0x7fb648}                                                   // the green showing in young foliage
-	bark     = art.Tones{0x34303a, 0x524c54, 0x75706e, 0x958f88, 0xb5ada0}                               // smooth grey
+	bark     = art.Tones{0x34303a, 0x524c54, 0x75706e, 0x958f88, 0xb5ada0}                               // smooth gray
 	twig     = art.Tones{0x34262a, 0x54403a, 0x7a5e4e}
 	young    = art.Tones{0x6a3430, 0xa04a3c, 0xd06a52} // a seedling's red stem
 	lichen   = art.Tones{0x9a9c88, 0xc8c8b4}
 	scar     = art.Color(0x241818)
-	patch    = art.Tones{0xa89f90, 0xc2baa8}                     // the pale mottling of old grey bark
+	patch    = art.Tones{0xa89f90, 0xc2baa8}                     // the pale mottling of old gray bark
 	pot      = art.Tones{0xa89f88, 0xcfc6ac, 0xebe3cc, 0xfaf5e6} // ivory glaze
 	soil     = art.Tones{0x2b1f19, 0x3d2c22, 0x57402f}
 	moss     = art.Tones{0x2f5a2a, 0x4f8a38, 0x7cb450, 0xa8d878}

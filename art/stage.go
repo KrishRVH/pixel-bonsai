@@ -85,14 +85,9 @@ func StageAt(g float64) Stage {
 	return s
 }
 
-// Ramp returns 0 before start, rising linearly to 1 at start + span.
-func Ramp(g, start, span float64) float64 {
-	return Clamp((g - start) / span)
-}
-
-// Since returns 0 before stage s starts, rising to 1 over span of age.
+// Since returns 0 before stage s starts, rising linearly to 1 over span of age.
 func Since(g float64, s Stage, span float64) float64 {
-	return Ramp(g, s.Start(), span)
+	return Clamp((g - s.Start()) / span)
 }
 
 // From reports whether g has reached stage s.

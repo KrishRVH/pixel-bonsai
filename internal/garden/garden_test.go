@@ -237,7 +237,7 @@ func TestAFailedReadNeverOverwritesTheGarden(t *testing.T) {
 	dir := t.TempDir()
 	store := garden.Open(dir)
 	saved, err := store.Update(func(g *garden.Garden) bool {
-		return g.Record(map[string]map[string]int64{"claude": {"2026-11-18": 5000}}) && g.Accrue(0, "2026-11-19")
+		return g.Record(map[string]map[string]int64{claude: {past: 5000}}) && g.Accrue(0, day)
 	})
 	if err != nil {
 		t.Fatal(err)

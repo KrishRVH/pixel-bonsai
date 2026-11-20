@@ -39,13 +39,6 @@ func (c *Canvas) Put(i, j int, col Color) {
 	}
 }
 
-// PutIfEmpty sets pixel (i, j) when it is on the canvas and nothing has painted it yet.
-func (c *Canvas) PutIfEmpty(i, j int, col Color) {
-	if c.inside(i, j) && c.px[j*c.w+i] == 0 {
-		c.px[j*c.w+i] = painted | uint32(col)
-	}
-}
-
 // Get returns pixel (i, j) and whether it is set.
 func (c *Canvas) Get(i, j int) (Color, bool) {
 	if !c.inside(i, j) || c.px[j*c.w+i] == 0 {

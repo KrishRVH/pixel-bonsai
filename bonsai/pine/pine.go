@@ -17,7 +17,7 @@ import (
 
 var (
 	needle     = art.Tones{0x15323a, 0x1c4440, 0x26574a, 0x336a55, 0x4a8967, 0x7fb47c} // shadow to lit tips
-	half       = art.Color(0x3e7a5e)                                                   // halfway from needle[3] to needle[4]
+	midNeedle  = art.Color(0x3e7a5e)                                                   // halfway from needle[3] to needle[4]
 	paleTip    = art.Color(0x9ccf8f)                                                   // the palest tips of a venerable pad
 	sprout     = art.Tones{0x5f9a62, 0x8cc476, 0xbfe29a}                               // seed needles and fresh growth
 	stem       = art.Tones{0x6f6a42, 0x9a9358, 0xc2b878}                               // a young stem
@@ -48,9 +48,9 @@ var (
 		tones art.Tones
 	}{
 		{art.YoungTree, needle[:5]},
-		{art.Ramified, art.Tones{needle[0], needle[1], needle[2], needle[3], half, needle[4]}},
-		{art.Refined, art.Tones{needle[0], needle[1], needle[2], needle[3], half, needle[4], needle[5]}},
-		{art.Venerable, art.Tones{needle[0], needle[1], needle[2], needle[3], half, needle[4], needle[5], paleTip}},
+		{art.Ramified, art.Tones{needle[0], needle[1], needle[2], needle[3], midNeedle, needle[4]}},
+		{art.Refined, art.Tones{needle[0], needle[1], needle[2], needle[3], midNeedle, needle[4], needle[5]}},
+		{art.Venerable, art.Tones{needle[0], needle[1], needle[2], needle[3], midNeedle, needle[4], needle[5], paleTip}},
 	}
 )
 
@@ -67,7 +67,7 @@ func Variety() art.Variety {
 
 // isNeedle reports whether a color is one of a pad's tones, so holes and candles find the pad under them.
 func isNeedle(col art.Color) bool {
-	return slices.Contains(needle, col) || col == half || col == paleTip
+	return slices.Contains(needle, col) || col == midNeedle || col == paleTip
 }
 
 // The soil line at the pot's top; the trunk's foot in the soil, its axis there, and its full height; and the lowest y

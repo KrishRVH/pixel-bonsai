@@ -10,8 +10,7 @@ import (
 	"github.com/KrishRVH/pixel-bonsai/bonsai"
 )
 
-// These tests are what every variety must do, however it draws: the tests the art is held to. A new variety passes
-// them by being registered.
+// These tests hold every variety to the same bar, however it draws. A variety faces them once it is registered.
 
 // pixels is a frame as a map from position to color, for comparing frames.
 type pixels map[[2]int]art.Color
@@ -206,7 +205,7 @@ func checkOwnColors(t *testing.T, a art.Variety, pa pixels, b art.Variety, pb pi
 	}
 }
 
-func TestEachIsRecognisableSmallFromAYoungTreeOn(t *testing.T) {
+func TestEachIsRecognizableSmallFromAYoungTreeOn(t *testing.T) {
 	t.Parallel()
 	for _, v := range bonsai.Varieties() {
 		for g := atStart(art.YoungTree); g <= 1; g += 0.03 {
@@ -266,7 +265,7 @@ func TestTheDayTreeKeepsGrowingThroughEveryStage(t *testing.T) {
 		t.Error("the lifetime tree does not run from seed to venerable at maturity")
 	}
 	if bonsai.LifeGrowth(0.4e9*365) >= 1 {
-		t.Error("a year at autumn 2026's pace leaves no growing to do")
+		t.Error("a year at 0.4B tokens a day leaves no growing to do")
 	}
 }
 

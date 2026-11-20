@@ -18,7 +18,7 @@ func main() {
 		<-ctx.Done()
 		stop() // the first signal asks the command to stop; a second one ends the process at once
 	}()
-	home, _ := os.UserHomeDir() // a missing home folder leaves only the state folder's own settings to find files by
+	home, _ := os.UserHomeDir() // without one, only environment variables can locate the state folder and the logs
 	app := cli.App{
 		Stdin:  os.Stdin,
 		Stdout: os.Stdout,

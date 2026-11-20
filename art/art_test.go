@@ -98,15 +98,6 @@ func TestColorsBlendAndTonesRunShadowToLit(t *testing.T) {
 	}
 }
 
-func TestFractIsInUnitRangeForNegatives(t *testing.T) {
-	t.Parallel()
-	for _, c := range []struct{ x, want float64 }{{1.25, 0.25}, {-0.25, 0.75}, {-3, 0}, {0, 0}} {
-		if got := art.Fract(c.x); math.Abs(got-c.want) > 1e-12 {
-			t.Errorf("Fract(%v) = %v, want %v", c.x, got, c.want)
-		}
-	}
-}
-
 func TestTheSizeOfACanvas(t *testing.T) {
 	t.Parallel()
 	if w, h := art.Size(1); w != art.W || h != art.H {

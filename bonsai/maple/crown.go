@@ -65,7 +65,6 @@ func carve(c *art.Canvas, g float64, limbs []limb, width float64) {
 		}
 	}
 	for _, p := range sky {
-		// The far rim of a window faces the light.
 		for _, q := range [2]image.Point{{X: p.X + 1, Y: p.Y}, {X: p.X, Y: p.Y + 1}} {
 			col, ok := c.Get(q.X, q.Y)
 			if k := slices.Index(leaf, col); ok && k >= 0 {
@@ -127,7 +126,7 @@ func spokes(r float64, salt int) []art.Point {
 	for k := range out {
 		a := -3.3 + 0.7*float64(k) + 0.25*art.Noise(salt, k, 0)
 		far := 1.4 + 1.8*art.Noise(salt, k+9, 0)
-		out[k] = art.Point{X: math.Cos(a) * (r + far), Y: math.Sin(a) * (r*0.58 + far*0.8)}
+		out[k] = art.Point{X: math.Cos(a) * (r + far), Y: math.Sin(a) * (r*squat + far*0.8)}
 	}
 	return out
 }

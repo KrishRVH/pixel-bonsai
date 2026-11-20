@@ -30,8 +30,8 @@ func TestHalfBlocksStackTwoPixelsToACell(t *testing.T) {
 	t.Parallel()
 	m := ansi.TrueColor
 	lines := ansi.HalfBlocks(frame(), m)
-	if len(lines) != art.Rows {
-		t.Fatalf("%d lines, want %d", len(lines), art.Rows)
+	if len(lines) != art.H/2 {
+		t.Fatalf("%d lines, want %d", len(lines), art.H/2)
 	}
 	want := "\x1b[38;2;170;0;0m\x1b[48;2;0;187;0m▀" + "\x1b[49m▀" + "\x1b[38;2;0;0;204m▄" + "\x1b[38;2;221;221;221m█" +
 		strings.Repeat(" ", art.W-4) + "\x1b[0m"

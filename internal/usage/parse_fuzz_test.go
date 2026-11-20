@@ -1,8 +1,6 @@
 package usage
 
-import (
-	"testing"
-)
+import "testing"
 
 // FuzzParsers feeds every source's parser arbitrary lines. A parser never panics, and what it counts is never
 // negative.

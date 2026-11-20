@@ -219,7 +219,7 @@ func TestAntigravityPiAndOhMyPiSessions(t *testing.T) {
 	}
 }
 
-func TestOpenCodeReadsCompletedMessagesInBothDatabaseFormats(t *testing.T) {
+func TestOpenCodeReadsCompletedMessagesFromEitherTable(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
 	path := filepath.Join(f.home, "custom.sqlite")
@@ -227,9 +227,9 @@ func TestOpenCodeReadsCompletedMessagesInBothDatabaseFormats(t *testing.T) {
 	done := `{"time":{"completed":1794312000000},"role":"assistant","tokens":{"input":2,"output":3,"reasoning":4,"cache":{"read":5,"write":6}}}`
 	exec(t, path,
 		"create table message (id text, time_updated integer, data text)",
-		"insert into message values ('old', 1, '"+done+"')",
+		"insert into message values ('a', 1, '"+done+"')",
 		"create table session_message (id text, type text, time_updated integer, data text)",
-		"insert into session_message values ('new', 'assistant', 10, '"+done+"')",
+		"insert into session_message values ('b', 'assistant', 10, '"+done+"')",
 		`insert into session_message values ('next', 'assistant', 10, '{"time":{},"role":"assistant","tokens":{"input":20}}')`,
 	)
 	l := f.ledger("opencode")

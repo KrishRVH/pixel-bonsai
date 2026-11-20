@@ -15,9 +15,9 @@ import (
 	_ "modernc.org/sqlite" // Registers the pure-Go "sqlite" driver, so builds need no C compiler.
 )
 
-// openCode reads completed assistant messages from OpenCode's SQLite database, in both its older message table and
-// its newer session_message table. It keeps each table's highest update time and reads from there on; a replaced
-// database is read again from its start.
+// openCode reads completed assistant messages from OpenCode's SQLite database, in either table OpenCode keeps them in,
+// message or session_message. It keeps each table's highest update time and reads from there on; a replaced database
+// is read again from its start.
 type openCode struct {
 	env        Env
 	info       os.FileInfo
@@ -104,7 +104,7 @@ type openCodeData struct {
 // from a time on.
 type openCodeTable struct {
 	name, query string
-	roleInData  bool // the older table keeps a message's role in its data
+	roleInData  bool // the message table keeps a message's role in its data
 }
 
 var openCodeTables = []openCodeTable{
@@ -150,7 +150,7 @@ func (o *openCode) readTable(ctx context.Context, db *sql.DB, table openCodeTabl
 	return malformed, nil
 }
 
-// openCodeEvent reads a completed assistant message's tokens. In the older table the role is in the data.
+// openCodeEvent reads a completed assistant message's tokens, checking the role in the data when checkRole is set.
 func openCodeEvent(id string, data []byte, checkRole bool) (event, bool, error) {
 	var d openCodeData
 	if err := json.Unmarshal(data, &d); err != nil {

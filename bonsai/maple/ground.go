@@ -140,7 +140,7 @@ func stoneAndRoots(c *art.Canvas, g float64) {
 	}
 }
 
-// root draws a root lying over the soil, w wide where it leaves the trunk and tapering, grey and lit with a shadow
+// root draws a root lying over the soil, w wide where it leaves the trunk and tapering, gray and lit with a shadow
 // under it, kept above the pot's rim.
 func root(c *art.Canvas, path art.Path, w float64, salt int) {
 	ghost := art.NewCanvas(c.Scale())

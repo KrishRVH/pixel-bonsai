@@ -1,4 +1,3 @@
-# The catalog fixtures use lockfile format 3.
 min_version = "2026.9.16"
 
 [settings]
@@ -45,5 +44,5 @@ description = "Run the standards workflow with autofixes"
 depends = ["go:standards"]
 
 [tasks."standards:check"]
-description = "Run the standards CI gate"
+description = "Run the standards gate"
 depends = ["secrets", "hygiene", "go:standards:check"]

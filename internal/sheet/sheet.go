@@ -1,4 +1,4 @@
-// Package sheet writes contact sheets of a variety, for reviewing its art without a terminal pane: labelled PNG grids
+// Package sheet writes contact sheets of a variety, for reviewing its art without a terminal pane: labeled PNG grids
 // of every stage and the pane's ANSI frames.
 package sheet
 
@@ -30,7 +30,7 @@ const (
 	labelSpace = 12
 )
 
-// A shot is one labelled frame on a sheet.
+// A shot is one labeled frame on a sheet.
 type shot struct {
 	label string
 	g     float64
@@ -57,7 +57,7 @@ func scaleShots() []shot {
 
 // Write writes a folder for the variety in dir, named for its id, and returns the files it wrote:
 //
-//   - stages.png: every stage just past its start, labelled, in a grid at the given scale
+//   - stages.png: every stage just past its start, labeled, in a grid at the given scale
 //   - day-100M.png and life-13B.png: the day's tree at 100M tokens and the lifetime tree at 13B
 //   - scales.png: the 13B frame at scales 0.6, 1, and 2
 //   - frames.txt: the same frames as the pane draws them, in ANSI half blocks

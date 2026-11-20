@@ -11,8 +11,8 @@ import (
 )
 
 // The token counts that grow a tree to its full age. DayTokens fills a day's tree: 100M tokens is a young tree, a
-// median autumn 2026 day of about 0.25B thickens its trunk, a busy 1B is refined, and about 2.6B is venerable.
-// MatureTokens fills a variety's lifetime tree, about two years at autumn 2026's pace of 0.4B tokens a day.
+// median day of about 0.25B thickens its trunk, a busy 1B is refined, and about 2.6B is venerable. MatureTokens fills
+// a variety's lifetime tree, about two years at 0.4B tokens a day.
 const (
 	DayTokens    = 3e9
 	MatureTokens = 250e9

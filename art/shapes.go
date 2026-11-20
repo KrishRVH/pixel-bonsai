@@ -127,7 +127,8 @@ func (c *Canvas) Coil(w Coil) []image.Point {
 	pitch, twist, duty := orDefault(w.Pitch, 3), orDefault(w.Twist, 0.35), orDefault(w.Duty, 0.45)
 	var out []image.Point
 	for _, cell := range c.Trace(w.Path, w.W0+w.Grow, w.W1+w.Grow) {
-		if Fract(cell.U/pitch+twist*cell.Across) >= duty || (w.Test != nil && !w.Test(cell.I, cell.J)) {
+		turn := cell.U/pitch + twist*cell.Across
+		if turn-math.Floor(turn) >= duty || (w.Test != nil && !w.Test(cell.I, cell.J)) {
 			continue
 		}
 		col := w.Color
@@ -146,8 +147,7 @@ type Blob struct {
 	Tones        Tones
 	Jitter       float64                 // dither between tones; 0 takes 0.5, NoJitter none
 	Lump         float64                 // 0 to about 0.4 makes the outline uneven
-	Gaps         float64                 // the share of the inside left open to the sky
-	Salt         int                     // varies the dither, lumps, and gaps
+	Salt         int                     // varies the dither and the lumps
 	Where        func(x, y float64) bool // when set, clips the blob to the points in units where it reports true
 }
 
@@ -166,9 +166,6 @@ func (c *Canvas) Blob(b Blob) *Cover {
 		}
 		r2 := nx*nx + ny*ny
 		if r2 > edge*edge || (b.Where != nil && !b.Where(s.X, s.Y)) {
-			continue
-		}
-		if b.Gaps != 0 && r2 < 0.55 && Noise(s.I, s.J, b.Salt+101) < b.Gaps {
 			continue
 		}
 		shade := Lit(nx, ny)

@@ -114,7 +114,7 @@ func mossOnSoil(c *art.Canvas, g float64) {
 
 // stone draws a big mossy stone on the soil at the left, standing in front of the lowest tier's underside.
 func stone(c *art.Canvas) {
-	clip := func(x, y float64) bool { return y < 22.6 && x > 13.9 }
+	clip := func(x, y float64) bool { return aboveRim(x, y) && x > 13.9 }
 	cover := c.Blob(art.Blob{X: 17.2, Y: 20.6, RX: 4.2, RY: 3.6, Tones: stoneTone, Jitter: 0.3, Lump: 0.12, Salt: 5, Where: clip})
 	high := func(_, j int, _ float64) bool { return float64(j) < 19.6*c.Scale() }
 	c.ScatterCover(cover, art.Scatter{Colors: moss[1:], Density: 0.3, Salt: 7, Test: high})

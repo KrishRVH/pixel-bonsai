@@ -59,7 +59,7 @@ func newLedger(source string, r reader) *Ledger {
 }
 
 // Update reads what the source added since the last update. An unreadable or missing source is not an error: it
-// counts nothing until it appears. The error reports a failure the next update may not repair, such as a cancelled
+// counts nothing until it appears. The error reports a failure the next update may not repair, such as a canceled
 // context or a database it cannot open.
 func (l *Ledger) Update(ctx context.Context) error {
 	stats, err := l.reader.read(ctx, l.add)

@@ -5,8 +5,8 @@
 // scale turns units into pixels, so a larger scale shows more detail rather than bigger blocks.
 //
 // Drawing is deterministic. The same age and scale give the same pixels on every call: texture comes from [Noise],
-// never from random state, and drawing code never ranges over a Go map, whose order varies. A [Cover]
-// keeps the pixels of a shape in drawing order for that reason.
+// never from random state, and drawing code never ranges over a Go map, whose order varies. A [Cover] keeps the
+// pixels of a shape in drawing order for that reason.
 //
 // Rounding takes halves to even ([math.RoundToEven]), in the kit and in the varieties alike, so a coordinate that
 // lands on a half pixel goes the same way everywhere.
@@ -14,11 +14,10 @@ package art
 
 import "math"
 
-// The base canvas in units: W wide and H tall, which is Rows terminal rows of half blocks at scale 1.
+// The base canvas in units: W wide and H tall, which is H/2 terminal rows of half blocks at scale 1.
 const (
-	W    = 48
-	H    = 30
-	Rows = H / 2
+	W = 48
+	H = 30
 )
 
 // MinScale and MaxScale bound the scales a pane draws a tree at.
@@ -59,10 +58,4 @@ func Clamp(v float64) float64 {
 // Lit returns the shade, 0 in shadow to 1 lit, of a point on a shape at offset (nx, ny) from its center in radii.
 func Lit(nx, ny float64) float64 {
 	return Clamp(0.5 + 0.5*(nx*LightX+ny*LightY))
-}
-
-// Fract returns the fractional part of x in [0, 1), also for negative x, as wire stripes and other repeating patterns
-// need.
-func Fract(x float64) float64 {
-	return x - math.Floor(x)
 }

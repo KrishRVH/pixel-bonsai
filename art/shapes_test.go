@@ -96,17 +96,13 @@ func TestABlobFillsItsEllipseLitFromTheUpperLeft(t *testing.T) {
 	}
 }
 
-func TestABlobCanBeLumpyHoledAndClipped(t *testing.T) {
+func TestABlobCanBeLumpyAndClipped(t *testing.T) {
 	t.Parallel()
 	plain := art.NewCanvas(1).Blob(art.Blob{X: 24, Y: 15, RX: 10, RY: 6, Tones: tones})
 	lumpy := art.NewCanvas(1).Blob(art.Blob{X: 24, Y: 15, RX: 10, RY: 6, Tones: tones, Lump: 0.3})
-	holed := art.NewCanvas(1).Blob(art.Blob{X: 24, Y: 15, RX: 10, RY: 6, Tones: tones, Gaps: 0.5})
 	clipped := art.NewCanvas(1).Blob(art.Blob{X: 24, Y: 15, RX: 10, RY: 6, Tones: tones, Where: func(x, _ float64) bool { return x < 24 }})
 	if same(plain, lumpy) {
 		t.Error("lump does not change the outline")
-	}
-	if holed.Len() >= plain.Len()*9/10 {
-		t.Errorf("gaps 0.5 left %d of %d pixels", holed.Len(), plain.Len())
 	}
 	for _, cell := range clipped.Cells() {
 		if cell.I >= 24 {
@@ -242,13 +238,8 @@ func TestACanvasCopiesOverlaysAndErases(t *testing.T) {
 	}
 	before := c.Clone()
 	c.Erase(1, 1)
-	c.PutIfEmpty(2, 2, 0x333333)
-	c.PutIfEmpty(2, 2, 0x444444)
 	if c.Has(1, 1) || !before.Has(1, 1) {
 		t.Error("Erase reached the clone, or missed the canvas")
-	}
-	if col, _ := c.Get(2, 2); col != 0x333333 {
-		t.Errorf("PutIfEmpty overwrote a pixel: %v", col)
 	}
 	c.Overlay(before, func(i, _ int) bool { return i < 2 })
 	if col, ok := c.Get(1, 1); !ok || col != 0x111111 {

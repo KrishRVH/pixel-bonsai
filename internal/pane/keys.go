@@ -39,8 +39,8 @@ var arrows = []struct {
 	{"\x1bOD", keyLeft},
 }
 
-// parseInput returns the events in a read of terminal input: ASCII characters, arrows, Enter, Escape, left clicks,
-// and the wheel in SGR mouse reports. Other escape sequences, such as focus reports, and the bytes of non-ASCII
+// parseInput returns the events in a read of terminal input: ASCII characters, arrows, Enter, Escape, and the clicks
+// and wheel turns of mouse reports. Other escape sequences, such as focus reports, and the bytes of non-ASCII
 // characters are skipped.
 func parseInput(data []byte) []input {
 	var out []input

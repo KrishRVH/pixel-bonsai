@@ -29,8 +29,8 @@ the code, tests, and docs use.
 
 - **Harness**: a coding agent that spends tokens, such as Claude Code or Codex.
 - **Source**: where usage comes from: a harness whose logs the bonsai reads natively, or the event feed.
-- **Event**: one model call's tokens at a time, with a **key** that identifies the call within its source, so a
-  retried, resumed, or copied call counts once.
+- **Event**: one model call's tokens and when it completed, with a **key** that identifies the call within its
+  source, so a retried, resumed, or copied call counts once.
 - **Ledger**: one source's events, counted once each and totaled by quarter hour. A ledger reads only what its source
   added since its last read.
 - **Event feed**: JSON lines any harness writes, directly or with `pixel-bonsai record`.

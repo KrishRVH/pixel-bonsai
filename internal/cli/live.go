@@ -16,8 +16,6 @@ import (
 // countEvery is how often the live pane counts usage.
 const countEvery = time.Minute
 
-var errNoTerminal = errors.New("the live bonsai needs a terminal: use render for one frame")
-
 // live shows the pane in the terminal.
 func (a App) live(ctx context.Context, args []string) (err error) {
 	fs := a.flags("pixel-bonsai", "pixel-bonsai [--color auto|truecolor|256|none]")
@@ -37,7 +35,7 @@ func (a App) live(ctx context.Context, args []string) (err error) {
 	}
 	out, ok := a.Stdout.(*os.File)
 	if !ok {
-		return errNoTerminal
+		return term.ErrNoTerminal
 	}
 	t, err := term.Open(a.Stdin, out)
 	if err != nil {

@@ -58,7 +58,6 @@ type bloomStyle struct {
 	tier      float64
 	holes     []hole
 	fineScale bool
-	veryOld   bool
 }
 
 type hole struct{ x, y, rx, ry float64 }
@@ -80,12 +79,11 @@ func newBloomStyle(c *art.Canvas, g float64, p pad) bloomStyle {
 		petals:    0.16,
 		hearts:    0.035,
 		fineScale: c.Scale() >= 1.5,
-		veryOld:   art.From(g, art.Venerable),
 	}
 	if s.fineScale {
 		s.petals = 0.08
 	}
-	if s.veryOld {
+	if art.From(g, art.Venerable) {
 		s.petals *= 1.5
 		s.hearts *= 2
 	}

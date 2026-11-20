@@ -48,7 +48,7 @@ func New() Garden {
 	}
 }
 
-// normalize repairs what a hand-edited or older file may lack: maps, a known variety, and a known view.
+// normalize repairs what a hand-edited file may lack: maps, a known variety, and a known view.
 func (g *Garden) normalize() {
 	if g.Grown == nil {
 		g.Grown = map[string]int64{}

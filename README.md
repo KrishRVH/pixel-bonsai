@@ -95,7 +95,7 @@ output formats. Go programs can import the drawing kit, `github.com/KrishRVH/pix
 ## Change the art
 
 Each variety is a Go package under [`bonsai/`](bonsai) that draws with the kit in [`art/`](art). To see every stage
-of a variety as labelled PNG contact sheets and terminal frames:
+of a variety as labeled PNG contact sheets and terminal frames:
 
 ```sh
 pixel-bonsai sheet artifacts/sheets maple

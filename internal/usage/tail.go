@@ -191,7 +191,7 @@ func envDir(env Env, variable string, def ...string) string {
 // unique returns paths without repeats, keeping the first of each.
 func unique(paths []string) []string {
 	seen := map[string]bool{}
-	out := paths[:0:0]
+	out := make([]string, 0, len(paths))
 	for _, p := range paths {
 		if !seen[p] {
 			seen[p] = true

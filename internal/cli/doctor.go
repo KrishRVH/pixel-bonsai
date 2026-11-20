@@ -68,7 +68,13 @@ func (a App) doctor(ctx context.Context, args []string) error {
 	from, to := day(a.Now())
 	for _, l := range u.Ledgers {
 		stats, err := l.Stats()
-		s := sourceReport{Name: l.Source, Places: append([]string{}, stats.Places...), Events: stats.Events, Today: l.Between(from, to), Malformed: stats.Malformed}
+		s := sourceReport{
+			Name:      l.Source,
+			Places:    append([]string{}, stats.Places...), // [] rather than null in JSON
+			Events:    stats.Events,
+			Today:     l.Between(from, to),
+			Malformed: stats.Malformed,
+		}
 		for _, n := range l.Days() {
 			s.Tokens += n
 		}

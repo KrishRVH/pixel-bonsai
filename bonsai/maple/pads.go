@@ -19,6 +19,9 @@ var (
 	tint = []art.Step{art.At(art.Ramified, 0.02), art.At(art.Refined, 0.05), art.At(art.Mature, 0.09), art.At(art.Venerable, 0.12)}
 )
 
+// squat is a pad's height as a share of its width.
+const squat = 0.58
+
 // A hole is a gap in a pad where the sky shows: its center and its half width; it is 0.7 as tall.
 type hole struct{ x, y, r float64 }
 
@@ -34,7 +37,7 @@ func foliage(c *art.Canvas, g float64, limbs []limb) {
 	slices.SortStableFunc(order, func(a, b limb) int { return cmp.Compare(a.y, b.y) })
 	for _, l := range order {
 		level := 0.40 + art.Steps(g, tint) - 0.1*(l.x-24)/20 - 0.08*(l.y-10)/10
-		shadeBehind(c, l.x, l.y, l.r, l.r*0.58, drop)
+		shadeBehind(c, l.x, l.y, l.r, l.r*squat, drop)
 		cover := pad(c, l.x, l.y, l.r, level, green, span, open, l.pad*11)
 		if apart != 0 {
 			splitLight(c, cover, l.x, l.y, l.r, apart, green)
@@ -98,7 +101,7 @@ func inHole(holes []hole, x, y float64) bool {
 // in it on a larger canvas, as many as open allows. It returns the pad's cover, each pixel's shade being its tone
 // level.
 func pad(c *art.Canvas, cx, cy, r, level, green, span, open float64, salt int) *art.Cover {
-	rx, ry := r, r*0.58
+	rx, ry := r, r*squat
 	n := 0
 	if c.Scale() >= 1.4 {
 		n = int(math.RoundToEven(open * 4))
@@ -145,7 +148,7 @@ func shadeBehind(c *art.Canvas, cx, cy, rx, ry float64, drop int) {
 func splitLight(c *art.Canvas, cover *art.Cover, x, y, r, apart, green float64) {
 	for _, cell := range cover.Cells() {
 		px, py := c.Center(cell.I, cell.J)
-		t := (px-x)/r*art.LightX + (py-y)/(0.58*r)*art.LightY + 0.4*(art.Noise(cell.I, cell.J, 16)-0.5)
+		t := (px-x)/r*art.LightX + (py-y)/(squat*r)*art.LightY + 0.4*(art.Noise(cell.I, cell.J, 16)-0.5)
 		if -0.1 <= t && t <= 0.35 {
 			continue
 		}

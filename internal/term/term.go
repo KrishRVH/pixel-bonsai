@@ -18,6 +18,9 @@ type Term struct {
 	restoreOut func() error
 }
 
+// ErrNoTerminal reports output that is not a terminal, where the live pane cannot run.
+var ErrNoTerminal = errors.New("the live bonsai needs a terminal: use render for one frame")
+
 // isTerminal reports whether f is a terminal.
 func isTerminal(f *os.File) bool {
 	return term.IsTerminal(int(f.Fd())) // #nosec G115 -- File descriptors fit in an int.
@@ -27,7 +30,7 @@ func isTerminal(f *os.File) bool {
 // once without echo, and escape-code processing on out. out must be a terminal.
 func Open(in, out *os.File) (*Term, error) {
 	if !isTerminal(out) {
-		return nil, errors.New("the live bonsai needs a terminal: use render for one frame")
+		return nil, ErrNoTerminal
 	}
 	restoreOut, err := enableEscapes(out)
 	if err != nil {

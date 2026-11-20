@@ -1,6 +1,10 @@
 package sakura
 
-import "github.com/KrishRVH/pixel-bonsai/art"
+import (
+	"math"
+
+	"github.com/KrishRVH/pixel-bonsai/art"
+)
 
 // aboveRim clips what sits on the soil, such as moss, a stone, or roots, to above the pot's rim.
 func aboveRim(_, y float64) bool {
@@ -64,14 +68,10 @@ func glaze(c *art.Canvas, cover *art.Cover, xl, xr, y0, y1 float64, tones art.To
 		x, y := c.Center(cell.I, cell.J)
 		down := (y - y0) / (y1 - y0)
 		shade := 0.95 - 0.8*(x-xl)/(xr-xl) - 0.25*down
-		shade += 0.25 * max(0, 1-abs(x-xl-0.22*(xr-xl))/2.5) * (1 - down)
+		shade += 0.25 * max(0, 1-math.Abs(x-xl-0.22*(xr-xl))/2.5) * (1 - down)
 		dither := (float64(cell.I%2+2*(cell.J%2)) + 0.5) / 4
 		c.Put(cell.I, cell.J, tones.Shade(art.Clamp(shade), 0.18, dither))
 	}
-}
-
-func abs(v float64) float64 {
-	return max(v, -v)
 }
 
 // nebari draws the roots flaring over the soil from the trunk's foot, thicker from Mature.
@@ -92,7 +92,7 @@ func nebari(c *art.Canvas, g float64) {
 func stone(c *art.Canvas) {
 	inside := func(x, y float64) bool {
 		dx, dy := (x-15.2)/4.6, (y-21.2)/3.7
-		return dx*dx+dy*dy < 1 && y < 23.3
+		return dx*dx+dy*dy < 1 && aboveRim(x, y)
 	}
 	c.Blob(art.Blob{X: 15.2, Y: 21.2, RX: 4.6, RY: 3.7, Tones: stoneTone, Lump: 0.12, Salt: 5, Where: aboveRim})
 	c.Line(14.2, 20.4, 15.6, 22.0, stoneTone[0], c.Has)
@@ -135,7 +135,7 @@ func stemPlant(c *art.Canvas, g float64, foot art.Point) {
 		lean = 1.1
 	}
 	spine := art.Spline([]art.Point{{X: x0, Y: y0}, {X: x0, Y: y0 - top*0.5}, {X: x0 + 0.3, Y: y0 - top*0.8}, {X: x0 + lean, Y: y0 - top}}, 4)
-	tones := stem[int(art.Steps(g, []art.Step{art.At(art.Sapling, 1), art.At(art.Whip, 2)})+0.5)]
+	tones := stem[int(math.RoundToEven(art.Steps(g, []art.Step{art.At(art.Sapling, 1), art.At(art.Whip, 2)})))]
 	c.Stroke(art.Stroke{Path: spine, W0: 0.8, W1: 0.8, Tones: tones, Jitter: 0.3})
 	tip := spine[len(spine)-1]
 	switch {

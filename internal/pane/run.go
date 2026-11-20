@@ -182,8 +182,8 @@ func (p *pane) draw() error {
 	return nil
 }
 
-// update applies a change to the garden. A garden saved by a newer build stops the pane; any other error leaves the
-// garden in memory, which the store keeps going.
+// update applies a change to the garden. A garden saved by a newer build stops the pane. After any other error the
+// pane shows the garden the store returns, and the next update tries the file again.
 func (p *pane) update(change func(*garden.Garden) bool) error {
 	g, err := p.store.Update(change)
 	if errors.Is(err, garden.ErrNewer) {

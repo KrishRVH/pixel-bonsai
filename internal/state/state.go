@@ -42,8 +42,9 @@ func Dir(home string, getenv func(string) string, goos string) (string, error) {
 }
 
 // Locked runs fn while holding an exclusive lock on the file at path, which it creates. It waits for other processes
-// to release the lock first, so the bonsai pane, a second pane, and the record command never interleave their
-// updates. Locks guard files that are replaced whole, so the lock is a sibling file rather than the file itself.
+// to release the lock first, so processes sharing the state folder, such as two panes or two record commands, never
+// interleave their updates. Locks guard files that are replaced whole, so the lock is a sibling file rather than the
+// file itself.
 func Locked(path string, fn func() error) (err error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 		return fmt.Errorf("create %s: %w", filepath.Dir(path), err)

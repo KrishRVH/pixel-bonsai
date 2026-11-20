@@ -28,7 +28,7 @@ func decode(t *testing.T, path string) image.Image {
 	return img
 }
 
-func TestItWritesLabelledPNGsAndANSIFramesForAVariety(t *testing.T) {
+func TestItWritesLabeledPNGsAndANSIFramesForAVariety(t *testing.T) {
 	t.Parallel()
 	out := t.TempDir()
 	pine, _ := bonsai.Lookup("black-pine")

@@ -13,7 +13,7 @@ var (
 	mottling = []art.Step{art.At(art.Mature, 0.42), art.At(art.Old, 0.44), art.At(art.Ancient, 0.1)}
 )
 
-// barkStroke draws a trunk, root, or limb of smooth grey bark: shaded as a cylinder lit on the left, with faint
+// barkStroke draws a trunk, root, or limb of smooth gray bark: shaded as a cylinder lit on the left, with faint
 // streaks along it and, as it ages, mottling over a share of it.
 func barkStroke(c *art.Canvas, path art.Path, w0, w1, mottle float64, salt int) {
 	for _, cell := range c.Trace(path, w0, w1) {
@@ -44,7 +44,7 @@ func mottled(cell art.StrokeCell, mottle float64, salt int, col art.Color) art.C
 	return col
 }
 
-// branches draws the grey limbs, and from Ramified the forks of fine twig on them.
+// branches draws the gray limbs, and from Ramified the forks of fine twig on them.
 func branches(c *art.Canvas, g float64, limbs []limb, width float64) {
 	for _, l := range limbs {
 		share := 0.2
@@ -74,7 +74,7 @@ func wire(c *art.Canvas, g float64, path art.Path, width float64, limbs []limb) 
 	}
 }
 
-// trunk draws the trunk: a seedling's red stem, then grey bark with its root flare, which broadens from Mature, the
+// trunk draws the trunk: a seedling's red stem, then gray bark with its root flare, which broadens from Mature, the
 // hollow of Old, and the shari of Ancient, a bleached stripe up most of its length.
 func trunk(c *art.Canvas, g float64, path art.Path, width float64) {
 	taper := max(width*0.4, 0.9)
