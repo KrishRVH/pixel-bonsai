@@ -224,25 +224,30 @@ func TestOpenCodeReadsCompletedMessagesFromEitherTable(t *testing.T) {
 	f := newFixture(t)
 	path := filepath.Join(f.home, "custom.sqlite")
 	f.env["OPENCODE_DB"] = path
-	done := `{"time":{"completed":1794312000000},"role":"assistant","tokens":{"input":2,"output":3,"reasoning":4,"cache":{"read":5,"write":6}}}`
 	exec(t, path,
 		"create table message (id text, time_updated integer, data text)",
-		"insert into message values ('a', 1, '"+done+"')",
+		"insert into message values ('a', 1, '"+openCodeMessage(1)+"')",
 		"create table session_message (id text, type text, time_updated integer, data text)",
-		"insert into session_message values ('b', 'assistant', 10, '"+done+"')",
+		"insert into session_message values ('b', 'assistant', 10, '"+openCodeMessage(2)+"')",
 		`insert into session_message values ('next', 'assistant', 10, '{"time":{},"role":"assistant","tokens":{"input":20}}')`,
 	)
 	l := f.ledger("opencode")
 	if got := total(l.Days()); got != 40 {
 		t.Fatalf("total = %d, want 40: an unfinished message waits", got)
 	}
-	exec(t, path, "update session_message set data='"+done+"', time_updated=11 where id='next'")
+	exec(t, path, "update session_message set data='"+openCodeMessage(3)+"', time_updated=11 where id='next'")
 	if got := total(update(t, l).Days()); got != 60 {
 		t.Errorf("total = %d, want 60", got)
 	}
 	if got := total(update(t, l).Days()); got != 60 {
 		t.Errorf("total = %d after a read with nothing new, want 60", got)
 	}
+}
+
+// openCodeMessage returns a completed assistant message's data with 20 tokens, finished n seconds after noon UTC on
+// day1.
+func openCodeMessage(n int64) string {
+	return fmt.Sprintf(`{"time":{"completed":%d},"role":"assistant","tokens":{"input":2,"output":3,"reasoning":4,"cache":{"read":5,"write":6}}}`, 1794312000000+n*1000)
 }
 
 func exec(t *testing.T, path string, statements ...string) {
@@ -256,6 +261,147 @@ func exec(t *testing.T, path string, statements ...string) {
 		if _, err := db.ExecContext(t.Context(), s); err != nil {
 			t.Fatalf("%s: %v", s, err)
 		}
+	}
+}
+
+func TestOpenCodeCountsAForkedSessionOnce(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	path := filepath.Join(f.home, ".local", "share", "opencode", "opencode.db")
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	call := `{"time":{"created":1794311990000,"completed":1794312000000},"role":"assistant","providerID":"p","modelID":"m","tokens":{"input":2,"output":3}}`
+	exec(t, path,
+		"create table message (id text, time_updated integer, data text)",
+		"insert into message values ('msg_1', 1, '"+call+"')",
+		"insert into message values ('msg_fork', 2, '"+call+"')",
+	)
+	if got := total(f.ledger("opencode").Days()); got != 5 {
+		t.Errorf("total = %d, want 5: a fork copies a session's messages under new ids", got)
+	}
+}
+
+func TestKiloReadsTheDatabaseOfEachChannel(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	dir := filepath.Join(f.home, ".local", "share", "kilo")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	for k, name := range []string{"kilo.db", "kilo-rc.db", "opencode-dev.db", "session-export.db"} {
+		exec(t, filepath.Join(dir, name),
+			"create table message (id text, time_updated integer, data text)",
+			"insert into message values ('m', 1, '"+openCodeMessage(int64(k))+"')",
+		)
+	}
+	if got := total(f.ledger("kilo").Days()); got != 60 {
+		t.Errorf("total = %d, want 60: an export is not a channel's database", got)
+	}
+	f.env["KILO_DB"] = "kilo-rc.db"
+	if got := total(f.ledger("kilo").Days()); got != 20 {
+		t.Errorf("total = %d, want 20 from the one database KILO_DB names", got)
+	}
+}
+
+func TestCopilotCountsEachCallOnceAcrossRotationAndForks(t *testing.T) {
+	t.Parallel()
+	call := func(event, session string, sequence, tokens int) string {
+		return fmt.Sprintf(`{"type":"session.usage_record","id":%q,"timestamp":%q,"data":{"usage":{"model":"m","inputTokens":%d,"outputTokens":1,"cacheReadTokens":%d,"accounting":{"sourceSessionId":%q,"sequence":%d}}}}`, event, stamp, tokens-1, tokens-2, session, sequence)
+	}
+	f := newFixture(t)
+	dir := ".copilot/session-state/"
+	f.append(dir+"s1/events.1.jsonl", call("e1", "s1", 0, 100), `{"type":"assistant.message","data":{"outputTokens":7}}`)
+	f.append(dir+"s1/events.jsonl", call("e1", "s1", 0, 100), call("e2", "s1", 1, 20))
+	f.append(dir+"s2/events.jsonl", call("e8", "s1", 0, 100), call("e9", "s1", 1, 20),
+		`{"type":"session.usage_record","id":"e3","timestamp":"`+stamp+`","data":{"usage":{"inputTokens":3}}}`)
+	if got := total(f.ledger("copilot").Days()); got != 123 {
+		t.Errorf("total = %d, want 123: a rotated journal and a fork copy their calls", got)
+	}
+	g := newFixture(t)
+	g.env["COPILOT_HOME"] = filepath.Join(g.home, "elsewhere")
+	g.append("elsewhere/session-state/s/events.jsonl", call("e", "s", 1, 9))
+	if got := total(g.ledger("copilot").Days()); got != 9 {
+		t.Errorf("total = %d, want 9 from COPILOT_HOME", got)
+	}
+}
+
+func TestQwenReadsTheLedgersOfEachRuntimeFolder(t *testing.T) {
+	t.Parallel()
+	line := func(id string, total int) string {
+		return fmt.Sprintf(`{"schemaVersion":1,"id":%q,"timestamp":%q,"inputTokens":%d,"outputTokens":10,"cachedTokens":40,"totalTokens":%d}`, id, stamp, total-10, total)
+	}
+	f := newFixture(t)
+	f.append(".qwen/usage/token-usage-2026-11.jsonl", line("a", 100), line("a", 100), line("b", 10))
+	f.env["QWEN_RUNTIME_DIR"] = filepath.Join(f.home, "runtime")
+	f.append("runtime/usage/token-usage-2026-10.jsonl", line("c", 1000))
+	if got := total(f.ledger("qwen").Days()); got != 1110 {
+		t.Errorf("total = %d, want 1110: each id counts once, from every runtime folder", got)
+	}
+}
+
+func TestKimiCodeCountsAForkedJournalOnce(t *testing.T) {
+	t.Parallel()
+	record := func(ms int64, input int) string {
+		return fmt.Sprintf(`{"type":"usage.record","agentId":"main","model":"kimi-k2","usage":{"inputOther":%d,"output":5,"inputCacheRead":100,"inputCacheCreation":0},"usageScope":"turn","time":%d}`, input, ms)
+	}
+	f := newFixture(t)
+	dir := ".kimi-code/sessions/wd_proj_0123456789ab/"
+	f.append(dir+"s1/agents/main/wire.jsonl", `{"type":"metadata","protocol_version":"1.5"}`, record(1794312000000, 10),
+		`{"type":"context.append_loop_event","event":{"type":"step.end","usage":{"inputOther":10}}}`)
+	f.append(dir+"s2/agents/main/wire.jsonl", record(1794312000000, 10), record(1794312001000, 20))
+	f.append(dir+"s1/agents/sub-1/wire.jsonl", record(1794312000000, 10))
+	if got := total(f.ledger("kimi").Days()); got != 355 {
+		t.Errorf("total = %d, want 355: a fork copies the journal, and each agent's calls are its own", got)
+	}
+}
+
+func TestGooseReadsItsUsageLedger(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	f.env["APPDATA"] = filepath.Join(f.home, "roaming")
+	path := filepath.Join(f.home, ".local", "share", "goose", "sessions", "sessions.db")
+	windows := filepath.Join(f.home, "roaming", "Block", "goose", "data", "sessions", "sessions.db")
+	const table = "create table usage_ledger (id integer primary key autoincrement, session_id text not null, " +
+		"created_timestamp integer not null, input_tokens integer, output_tokens integer, total_tokens integer, " +
+		"cache_read_tokens integer, cost_source text)"
+	const insert = "insert into usage_ledger (session_id, created_timestamp, input_tokens, output_tokens, total_tokens, cache_read_tokens, cost_source) values "
+	for _, p := range []string{path, windows} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exec(t, path, table,
+		insert+"('20261110_1', 1794312000, null, null, 900, null, 'carried_forward')",
+		insert+"('20261110_1', 1794312000, 120, 30, 150, 100, 'estimated')",
+		insert+"('20261110_1', 1794312060, null, null, 40, null, null)",
+	)
+	exec(t, windows, table, insert+"('20261110_1', 1794312000, 1, 1, 2, 0, null)")
+	l := f.ledger("goose")
+	if got := l.Days(); !maps.Equal(got, map[string]int64{day1: 192}) {
+		t.Fatalf("days = %v, want 192 on %s: input holds the cache reads, and carried-forward usage is not a call", got, day1)
+	}
+	exec(t, path, insert+"('20261110_2', 1794312120, 5, 5, 10, 0, 'provider_reported')")
+	if got := total(update(t, l).Days()); got != 202 {
+		t.Errorf("total = %d, want 202 after a new row", got)
+	}
+	fresh := filepath.Join(f.home, "fresh.db")
+	exec(t, fresh, table, insert+"('20261110_3', 1794312180, 6, 6, 12, 0, null)")
+	if err := os.Rename(fresh, path); err != nil {
+		t.Fatal(err)
+	}
+	if got := total(update(t, l).Days()); got != 214 {
+		t.Errorf("total = %d, want 214: a replaced database is read from its first row", got)
+	}
+	g := newFixture(t)
+	g.env["GOOSE_PATH_ROOT"] = filepath.Join(g.home, "root")
+	rooted := filepath.Join(g.home, "root", "data", "sessions", "sessions.db")
+	if err := os.MkdirAll(filepath.Dir(rooted), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	exec(t, rooted, table, insert+"('s', 1794312000, 3, 4, 7, 0, null)")
+	if got := total(g.ledger("goose").Days()); got != 7 {
+		t.Errorf("total = %d, want 7 from GOOSE_PATH_ROOT", got)
 	}
 }
 

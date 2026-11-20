@@ -6,86 +6,76 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/url"
-	"os"
 	"path/filepath"
-	"runtime"
-	"strings"
-
-	_ "modernc.org/sqlite" // Registers the pure-Go "sqlite" driver, so builds need no C compiler.
 )
 
-// openCode reads completed assistant messages from OpenCode's SQLite database, in either table OpenCode keeps them in,
-// message or session_message. It keeps each table's highest update time and reads from there on; a replaced database
-// is read again from its start.
+// openCode reads completed assistant messages from the SQLite databases of OpenCode and of Kilo Code, its fork, in
+// either table they keep messages in, message or session_message. It keeps each table's highest update time and reads
+// from there on.
 type openCode struct {
-	env        Env
-	info       os.FileInfo
-	watermarks map[string]int64
+	env  Env
+	find func(Env) []string
+	dbs  databases
 }
 
-func newOpenCode(env Env) *openCode {
-	return &openCode{env: env, watermarks: map[string]int64{}}
+func newOpenCode(env Env, find func(Env) []string) *openCode {
+	return &openCode{env: env, find: find, dbs: databases{}}
 }
 
-// openCodePath returns the database: OPENCODE_DB, relative to OpenCode's data folder unless absolute, or opencode.db
-// there. The data folder is XDG_DATA_HOME/opencode, default ~/.local/share/opencode, on every system.
-func openCodePath(env Env) string {
-	base := filepath.Join(envDir(env, "XDG_DATA_HOME", ".local", "share"), "opencode")
-	name := env.Getenv("OPENCODE_DB")
-	if name == "" {
-		name = "opencode.db"
-	}
-	if filepath.IsAbs(name) {
-		return name
-	}
-	return filepath.Join(base, name)
+// openCodeFiles returns OpenCode's databases: OPENCODE_DB, or opencode.db and the opencode-CHANNEL.db of other
+// release channels in its data folder.
+func openCodeFiles(env Env) []string {
+	return dataDatabases(env, "opencode", "OPENCODE_DB", "opencode-*.db")
 }
 
-// read reads the messages updated since the last read. A database that is missing counts nothing; one that is busy
-// or migrating returns its error and is read again on the next update.
-func (o *openCode) read(ctx context.Context, add func(event)) (stats Stats, err error) {
-	path := openCodePath(o.env)
-	info, statErr := os.Stat(path)
-	if statErr != nil {
-		return Stats{}, nil // no database means OpenCode has recorded nothing yet
-	}
-	stats.Places = []string{path}
-	if o.info == nil || !os.SameFile(o.info, info) {
-		clear(o.watermarks)
-	}
-	o.info = info
-	db, err := sql.Open("sqlite", readOnlyURI(path))
-	if err != nil {
-		return stats, fmt.Errorf("open %s: %w", path, err)
-	}
-	defer func() { err = errors.Join(err, db.Close()) }()
-	for _, table := range openCodeTables {
-		malformed, err := o.readTable(ctx, db, table, add)
-		stats.Malformed += malformed
-		if err != nil {
-			return stats, fmt.Errorf("opencode %s: %w", path, err)
+// kiloFiles returns Kilo Code's databases, which keep OpenCode's layout under Kilo's name: KILO_DB, or kilo.db,
+// kilo-CHANNEL.db, and the opencode-CHANNEL.db a channel build keeps when one exists, in its data folder.
+func kiloFiles(env Env) []string {
+	return dataDatabases(env, "kilo", "KILO_DB", "kilo-*.db", "opencode-*.db")
+}
+
+// dataDatabases returns the database an environment variable names, relative to the app's data folder unless
+// absolute, or else app.db and the files matching patterns there. The data folder is XDG_DATA_HOME/app, default
+// ~/.local/share/app, on every system.
+func dataDatabases(env Env, app, variable string, patterns ...string) []string {
+	base := filepath.Join(envDir(env, "XDG_DATA_HOME", ".local", "share"), app)
+	if name := env.Getenv(variable); name != "" {
+		if !filepath.IsAbs(name) {
+			name = filepath.Join(base, name)
 		}
+		return []string{name}
 	}
-	return stats, nil
+	out := []string{filepath.Join(base, app+".db")}
+	for _, pattern := range patterns {
+		out = append(out, glob(filepath.Join(base, pattern))...)
+	}
+	return unique(out)
 }
 
-// readOnlyURI returns a SQLite URI that opens path read-only.
-func readOnlyURI(path string) string {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		abs = path
-	}
-	p := filepath.ToSlash(abs)
-	if runtime.GOOS == "windows" && !strings.HasPrefix(p, "/") {
-		p = "/" + p
-	}
-	return (&url.URL{Scheme: "file", Path: p, RawQuery: "mode=ro"}).String()
+func (o *openCode) read(ctx context.Context, add func(event)) (Stats, error) {
+	return o.dbs.read(ctx, o.find(o.env), func(ctx context.Context, db *sql.DB, marks map[string]int64) (int, error) {
+		malformed := 0
+		for _, table := range openCodeTables {
+			n, err := readOpenCodeTable(ctx, db, table, marks, add)
+			malformed += n
+			if err != nil {
+				return malformed, err
+			}
+		}
+		return malformed, nil
+	})
 }
 
 type openCodeData struct {
-	Role string `json:"role"`
+	Role       string `json:"role"`
+	ProviderID string `json:"providerID"`
+	ModelID    string `json:"modelID"`
+	Model      *struct {
+		ID         string `json:"id"`
+		ProviderID string `json:"providerID"`
+	} `json:"model"` // the session_message table's form of providerID and modelID
 	Time struct {
+		Created   count `json:"created"`
 		Completed count `json:"completed"`
 	} `json:"time"`
 	Tokens *struct {
@@ -93,7 +83,7 @@ type openCodeData struct {
 		Input     count `json:"input"`
 		Output    count `json:"output"`
 		Reasoning count `json:"reasoning"`
-		Cache     *struct {
+		Cache     struct {
 			Read  count `json:"read"`
 			Write count `json:"write"`
 		} `json:"cache"`
@@ -108,35 +98,30 @@ type openCodeTable struct {
 }
 
 var openCodeTables = []openCodeTable{
-	{"session_message", "SELECT id, time_updated, data FROM session_message WHERE time_updated >= ? AND type = 'assistant'", false},
-	{"message", "SELECT id, time_updated, data FROM message WHERE time_updated >= ?", true},
+	{"session_message", "SELECT time_updated, data FROM session_message WHERE time_updated >= ? AND type = 'assistant'", false},
+	{"message", "SELECT time_updated, data FROM message WHERE time_updated >= ?", true},
 }
 
-// readTable reads a table's messages updated from its watermark on, and raises the watermark to the latest. A table
-// the database lacks has nothing to read.
-func (o *openCode) readTable(ctx context.Context, db *sql.DB, table openCodeTable, add func(event)) (malformed int, err error) {
-	var exists int
-	if err := db.QueryRowContext(ctx, "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = ?", table.name).Scan(&exists); err != nil {
-		return 0, fmt.Errorf("list tables: %w", err)
+// readOpenCodeTable reads a table's messages updated from its watermark on, and raises the watermark to the latest. A
+// table the database lacks has nothing to read.
+func readOpenCodeTable(ctx context.Context, db *sql.DB, table openCodeTable, marks map[string]int64, add func(event)) (malformed int, err error) {
+	if ok, err := hasTable(ctx, db, table.name); err != nil || !ok {
+		return 0, err
 	}
-	if exists == 0 {
-		return 0, nil
-	}
-	watermark := o.watermarks[table.name]
+	watermark := marks[table.name]
 	rows, err := db.QueryContext(ctx, table.query, watermark)
 	if err != nil {
 		return 0, fmt.Errorf("read %s: %w", table.name, err)
 	}
 	defer func() { err = errors.Join(err, rows.Close()) }()
 	for rows.Next() {
-		var id string
 		var updated int64
 		var data []byte
-		if err := rows.Scan(&id, &updated, &data); err != nil {
+		if err := rows.Scan(&updated, &data); err != nil {
 			return malformed, fmt.Errorf("read %s: %w", table.name, err)
 		}
 		watermark = max(watermark, updated)
-		e, ok, decodeErr := openCodeEvent(id, data, table.roleInData)
+		e, ok, decodeErr := openCodeEvent(data, table.roleInData)
 		if decodeErr != nil {
 			malformed++
 		} else if ok {
@@ -146,12 +131,14 @@ func (o *openCode) readTable(ctx context.Context, db *sql.DB, table openCodeTabl
 	if err := rows.Err(); err != nil {
 		return malformed, fmt.Errorf("read %s: %w", table.name, err)
 	}
-	o.watermarks[table.name] = watermark
+	marks[table.name] = watermark
 	return malformed, nil
 }
 
-// openCodeEvent reads a completed assistant message's tokens, checking the role in the data when checkRole is set.
-func openCodeEvent(id string, data []byte, checkRole bool) (event, bool, error) {
+// openCodeEvent reads a completed assistant message's tokens, checking the role in the data when checkRole is set. A
+// fork copies a session's messages under new ids with their times and tokens, so the key is the call's model, times,
+// and tokens, which the copy shares.
+func openCodeEvent(data []byte, checkRole bool) (event, bool, error) {
 	var d openCodeData
 	if err := json.Unmarshal(data, &d); err != nil {
 		return event{}, false, err
@@ -159,13 +146,15 @@ func openCodeEvent(id string, data []byte, checkRole bool) (event, bool, error) 
 	if (checkRole && d.Role != assistant) || d.Time.Completed == 0 || d.Tokens == nil {
 		return event{}, false, nil
 	}
+	provider, model := d.ProviderID, d.ModelID
+	if d.Model != nil {
+		provider, model = d.Model.ProviderID, d.Model.ID
+	}
 	t := d.Tokens
 	tokens := int64(t.Total)
 	if tokens == 0 {
-		tokens = sum(t.Input, t.Output, t.Reasoning)
-		if t.Cache != nil {
-			tokens += sum(t.Cache.Read, t.Cache.Write)
-		}
+		tokens = sum(t.Input, t.Output, t.Reasoning, t.Cache.Read, t.Cache.Write)
 	}
+	id := key(provider, model, counts(d.Time.Created, d.Time.Completed, t.Total, t.Input, t.Output, t.Reasoning, t.Cache.Read, t.Cache.Write))
 	return event{id, timeFromMillis(int64(d.Time.Completed)), tokens}, true, nil
 }

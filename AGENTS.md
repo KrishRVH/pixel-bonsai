@@ -1,21 +1,31 @@
 # Agent Guide
 
 Read `CONTEXT.md` first. Then read the docs that own the change before changing architecture or domain language:
-`README.md` for behavior, `docs/integrations.md` for the contracts other programs rely on.
+`README.md` for what people see, `docs/harnesses.md` for the usage sources, and `docs/integrations.md` for the contracts
+other programs rely on.
 
 ## Commands
 
-`mise run` is the entry point for project workflows; tasks wrap the toolchain. Run `mise tasks` and read the
-definitions of the tasks you use. Extend an existing task before you add one.
+Tasks are the project's interface. `mise run test`, `mise run lint`, and `mise run standards:check` mean the same
+thing in every project, whichever toolchain does the work, and each task holds what its workflow needs: flags, order,
+environment, and prerequisites. Run `mise tasks` and read the definitions of the tasks you use.
 
 - `mise install` installs the pinned tools. When an install needs network, run it and report that.
 - `mise run standards` applies the available autofixes.
 - `mise run standards:check` is the gate; run it before handoff. The project has no CI: the gate runs locally.
 - `mise run release vX.Y.Z` publishes a release from `main`. Run it only when the owner asks.
 
-Run `git`, `rg`, `tokei`, and standalone scripts directly. Use native commands for focused diagnosis and the mise
-gate for final verification. Use `mise exec -- <command>` only when a command needs a pinned tool or environment and no
-task covers it.
+Choose each command by what it does:
+
+- A task covers the workflow: run the task.
+- A workflow no task covers yet, such as a command line a doc tells readers to type, is a missing task: extend an
+  existing task or add one. A task earns its name with a verb every project shares or with knowledge the caller would
+  otherwise carry. Its body is the toolchain's own command line, and `depends` composes it with other tasks.
+- Everything else runs as itself: `git`, `rg`, `tokei`, standalone scripts, mise's own commands such as `mise lock`,
+  and one-off toolchain commands for focused diagnosis.
+
+A shell without mise activation, such as an agent shell, changes how a one-off toolchain command starts and nothing
+else: `mise exec -- <command>`. The config supplies the tools and versions.
 
 ## Project map
 
@@ -26,7 +36,7 @@ task covers it.
 | `art` | The drawing kit and the ladder of stages. Public, so programs can draw trees. |
 | `bonsai` | The varieties in switch order and the curves from tokens to age. |
 | `bonsai/<variety>` | One variety's drawing. |
-| `internal/usage` | Reading usage: one file per harness, the JSONL tailer, the event feed, and the ledgers. |
+| `internal/usage` | Reading usage: one file per harness, the JSONL tailer, the SQLite reader, the event feed, and the ledgers. |
 | `internal/garden` | The saved state and the rules for handing tokens to varieties. |
 | `internal/pane` | The live view: layout, input, and the run loop. |
 | `internal/term` | The terminal on each system: raw input, size, and reads that time out. |
@@ -55,6 +65,7 @@ and an add on processors such as arm64.
 3. Run `go test ./bonsai/...`. The conformance tests in `bonsai/bonsai_test.go` hold every variety to the same
    bar: each stage shows something new, pixels stay on the canvas and repeat exactly, a larger scale draws more
    detail, the tree grows with age, varieties stay distinct, and each shows its signature color small.
+4. Run `mise run docs:images` to redraw the README's pictures.
 
 ## Add a variety
 
@@ -62,15 +73,18 @@ and an add on processors such as arm64.
    signature colors, and the draw function. Start from the variety closest to the new one.
 2. Add it to `bonsai.Varieties()` at its place in the switch order.
 3. Run the conformance tests and look at the sheets.
+4. Add it to the `docs:images` task and to the row of trees in `README.md`.
 
 ## Add a harness
 
 1. Add `internal/usage/<harness>.go`. For JSONL logs, write a function that finds the files and a `lineParser` that
-   turns a line into an `Event`; the tailer reads only new lines. For other stores, implement `reader`, as
-   `opencode.go` does. Choose the event key so that a retried, resumed, or forked call keeps its key.
+   turns a line into an `event`; the tailer reads only new lines. For a SQLite database, implement `reader`
+   with `databases` from `sqlite.go`, as `goose.go` does; for any other store, implement `reader` directly. Choose
+   the event key so that a retried, resumed, forked, or copied call keeps its key.
 2. Add it to `usage.New`. The order there is the order `doctor` reports.
 3. Add a fixture test to `internal/usage/usage_test.go`, and a seed line to `FuzzParsers`.
-4. Add it to the harness table in `README.md` and its environment variables to `docs/integrations.md`.
+4. Add it to the table in `docs/harnesses.md`, its name to the list in `README.md`, and its environment variables to
+   `docs/integrations.md`.
 
 A harness that does not keep local logs reports through the event feed instead; it needs no code here.
 
@@ -111,12 +125,16 @@ no shims, aliases, deprecations, dual code paths, format migrations, or version-
   way for its owner to wait for it.
 - Return errors with useful operation context, wrapped for `errors.Is` and `errors.As`, and handle each once.
 - Keep resource cleanup next to acquisition. Check errors from writes and closes when they can affect correctness.
-- The restricted dialect in `README.md` forbids range-over-function iterators and generic methods.
+- The project's Go dialect rejects two features the compiler accepts. `boringlint/noiterator` rejects
+  range-over-function iterators: `iter` imports, the construct, and iterator-shaped declarations.
+  `boringlint/nogenericmethod` rejects generic methods, declared or selected from a dependency. Methods on generic types
+  that use only the receiver's type parameters, and package-level generic functions, stay allowed. Materialize an
+  iterator a dependency returns at the call boundary, for example with `slices.Collect`.
 - Read `.golangci.yml` for the enforced diagnostics. Fix the cause before adding a specific, reasoned `nolint`.
 - Test observable behavior with table-driven cases where inputs are peers. Prefer real boundaries, such as temporary
   folders, and narrow fakes. Fuzz parsers of untrusted input.
-- Code for one system goes in a file with a build constraint, as in `internal/term` and `internal/state`. Cross-compile
-  for Windows and macOS after touching one: `GOOS=windows go vet ./...` and `GOOS=darwin go vet ./...`.
+- Code for one system goes in a file with a build constraint, as in `internal/term` and `internal/state`. The gate
+  also vets the Windows and macOS builds; `mise run go:vet:cross` runs that check alone.
 
 ## Documentation
 

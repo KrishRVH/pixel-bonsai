@@ -37,6 +37,20 @@ different identities, and both count.
 Every command exits 0 on success, 1 on a failure, and 2 on a mistake in its command line. Flags may come before or
 after positional arguments.
 
+### `pixel-bonsai`
+
+```sh
+pixel-bonsai [--color MODE]
+```
+
+Runs the live pane, whose keys the [README](../README.md#grow-a-tree) lists. The pane needs a terminal that
+understands escape codes: Windows Terminal, the Windows 10 or later console, and every current macOS and Linux terminal
+do. It counts usage when it starts and every minute after.
+
+`--color` takes `truecolor`, `256`, or `none`. Without it, the environment decides, in this order: `NO_COLOR` or
+`TERM=dumb` draws a plain silhouette, `COLORTERM=truecolor` or `COLORTERM=24bit` gets 24-bit color, Apple's Terminal
+gets 256 colors, and every other terminal gets 24-bit color.
+
 ### `pixel-bonsai record`
 
 ```sh
@@ -101,14 +115,28 @@ report is for people; its fields may change.
 | `BONSAI_USAGE_FILE` | Extra event feed files. |
 | `CLAUDE_CONFIG_DIR` | Another Claude Code configuration folder to read transcripts from. |
 | `CODEX_HOME` | Codex's folder, by default `~/.codex`. |
+| `COPILOT_HOME` | GitHub Copilot CLI's folder, by default `~/.copilot`. |
 | `PI_CODING_AGENT_SESSION_DIR`, `PI_CODING_AGENT_DIR` | Pi's sessions folder, or the folder that holds it. |
 | `OPENCODE_DB` | OpenCode's database, absolute or relative to its data folder. |
-| `XDG_DATA_HOME` | The data folder that holds OpenCode's, by default `~/.local/share`. |
+| `KILO_DB` | Kilo Code's database, absolute or relative to its data folder. |
+| `QWEN_HOME`, `QWEN_RUNTIME_DIR` | Qwen Code runtime folders to read usage ledgers from, besides `~/.qwen`. |
+| `KIMI_CODE_HOME` | Kimi Code's folder, by default `~/.kimi-code`. |
+| `GOOSE_PATH_ROOT` | An absolute folder that holds Goose's `data` folder, in place of its default. |
+| `XDG_DATA_HOME` | The folder that holds the data folders of OpenCode, Kilo Code, and Goose, by default `~/.local/share`. |
+| `APPDATA` | The folder that holds Goose's data folder on Windows. |
 | `XDG_STATE_HOME` | The state folder's parent, except on Windows. |
 | `LOCALAPPDATA` | The state folder's parent on Windows. |
-| `NO_COLOR`, `TERM`, `COLORTERM`, `TERM_PROGRAM` | The live pane's color mode, as the README describes. |
+| `NO_COLOR`, `TERM`, `COLORTERM`, `TERM_PROGRAM` | The live pane's color mode, as [`pixel-bonsai`](#pixel-bonsai) describes. |
 
 ## State folder
+
+| System | State folder |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\pixel-bonsai` |
+| macOS | `~/Library/Application Support/pixel-bonsai` |
+| Linux and others | `$XDG_STATE_HOME/pixel-bonsai`, by default `~/.local/state/pixel-bonsai` |
+
+`BONSAI_STATE_DIR` selects another folder. Several panes can share one garden.
 
 | File | Contents |
 | --- | --- |

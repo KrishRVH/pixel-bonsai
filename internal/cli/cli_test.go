@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/KrishRVH/pixel-bonsai/internal/cli"
+	"github.com/KrishRVH/pixel-bonsai/internal/usage"
 )
 
 // run runs a command line in a home and state folder of its own and returns its exit code and output. Each DIR in
@@ -146,10 +147,10 @@ func TestRecordFeedsDoctor(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &report); err != nil {
 		t.Fatal(err)
 	}
-	if report.State != env["BONSAI_STATE_DIR"] || report.Color != "truecolor" || len(report.Sources) != 6 {
+	if report.State != env["BONSAI_STATE_DIR"] || report.Color != "truecolor" || len(report.Sources) != len(usage.New(usage.Env{}).Ledgers) {
 		t.Fatalf("report = %+v", report)
 	}
-	feed := report.Sources[5]
+	feed := report.Sources[len(report.Sources)-1]
 	if feed.Name != "events" || feed.Events != 1 || feed.Tokens != 71 || feed.Today != 71 {
 		t.Errorf("feed = %+v, want one event of 71 tokens today: a retry counts once", feed)
 	}

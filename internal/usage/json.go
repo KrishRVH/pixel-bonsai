@@ -82,3 +82,15 @@ const assistant = "assistant"
 func key(parts ...string) string {
 	return strings.Join(parts, "\x00")
 }
+
+// counts joins counts into one key part.
+func counts(cs ...count) string {
+	b := make([]byte, 0, 8*len(cs))
+	for k, c := range cs {
+		if k > 0 {
+			b = append(b, ' ')
+		}
+		b = strconv.AppendInt(b, int64(c), 10)
+	}
+	return string(b)
+}

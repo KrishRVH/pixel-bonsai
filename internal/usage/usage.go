@@ -128,9 +128,14 @@ func New(env Env) *Usage {
 	return &Usage{Ledgers: []*Ledger{
 		newLedger("claude", newTailer(env, claudeFiles, []byte(`"usage"`), claudeParser)),
 		newLedger("codex", newTailer(env, codexFiles, []byte(`"token_count"`), codexParser)),
+		newLedger("copilot", newTailer(env, copilotFiles, []byte(`"session.usage_record"`), copilotParser)),
 		newLedger("antigravity", newTailer(env, antigravityFiles, []byte(`"step_index"`), antigravityParser)),
 		newLedger("pi", newTailer(env, piFiles, []byte(`"usage"`), piParser)),
-		newLedger("opencode", newOpenCode(env)),
+		newLedger("opencode", newOpenCode(env, openCodeFiles)),
+		newLedger("kilo", newOpenCode(env, kiloFiles)),
+		newLedger("qwen", newTailer(env, qwenFiles, []byte(`"totalTokens"`), qwenParser)),
+		newLedger("kimi", newTailer(env, kimiFiles, []byte(`"usage.record"`), kimiParser)),
+		newLedger("goose", newGoose(env)),
 		newLedger("events", newTailer(env, feedFiles, nil, feedParser)),
 	}}
 }

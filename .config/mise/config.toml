@@ -31,9 +31,26 @@ depends = ["go:fmt"]
 description = "Check formatting"
 depends = ["go:fmt:check"]
 
+[tasks."docs:images"]
+description = "Draw the README's pictures"
+run = """
+set -eu
+mkdir -p docs/images
+for variety in sakura maple black-pine; do
+  go run . render --variety "$variety" --growth 0.85 --scale 2.5 --zoom 2 --format png >"docs/images/$variety.png"
+done
+for stage in seedling:0.04 first-branches:0.2 shaped:0.4 established:0.65 venerable:1; do
+  go run . render --variety sakura --growth "${stage#*:}" --scale 1.5 --zoom 2 --format png >"docs/images/${stage%%:*}.png"
+done
+"""
+
+[tasks."go:vet:cross"]
+description = "Vet the Windows and macOS builds"
+run = ["GOOS=windows go vet ./...", "GOOS=darwin go vet ./..."]
+
 [tasks.lint]
 description = "Run static analysis and dependency checks"
-depends = ["go:lint"]
+depends = ["go:lint", "go:vet:cross"]
 
 [tasks.test]
 description = "Run the tests"
@@ -45,4 +62,4 @@ depends = ["go:standards"]
 
 [tasks."standards:check"]
 description = "Run the standards gate"
-depends = ["secrets", "hygiene", "go:standards:check"]
+depends = ["secrets", "hygiene", "go:standards:check", "go:vet:cross"]
