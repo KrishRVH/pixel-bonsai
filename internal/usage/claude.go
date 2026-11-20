@@ -35,7 +35,8 @@ type claudeLine struct {
 }
 
 // claudeParser reads an assistant message's usage. A message repeats across the lines of a streamed response and in
-// a resumed session's copy of the transcript, so its key is the message and request ids.
+// a resumed session's copy of the transcript, so its key is the message and request ids. Each line holds the usage
+// known when it was written, and the response's last line all of it, which the ledger keeps as the larger count.
 func claudeParser(string) lineParser {
 	return func(line []byte) (event, bool, error) {
 		var l claudeLine

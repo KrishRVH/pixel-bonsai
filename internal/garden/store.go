@@ -129,13 +129,21 @@ func (s *Store) read(setAside bool) (Garden, bool, error) {
 	return g, false, nil
 }
 
+// parse decodes a garden file. It reads the schema first, since a newer schema may give the other fields types this
+// build cannot decode.
 func parse(data []byte) (Garden, error) {
+	var head struct {
+		Schema int `json:"schema"`
+	}
+	if err := json.Unmarshal(data, &head); err != nil {
+		return Garden{}, fmt.Errorf("decode garden: %w", err)
+	}
+	if head.Schema > schema {
+		return Garden{}, fmt.Errorf("%w (schema %d): upgrade to keep growing it", ErrNewer, head.Schema)
+	}
 	var g Garden
 	if err := json.Unmarshal(data, &g); err != nil {
 		return Garden{}, fmt.Errorf("decode garden: %w", err)
-	}
-	if g.Schema > schema {
-		return Garden{}, fmt.Errorf("%w (schema %d): upgrade to keep growing it", ErrNewer, g.Schema)
 	}
 	g.normalize()
 	return g, nil

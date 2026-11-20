@@ -8,6 +8,7 @@ package garden
 
 import (
 	"maps"
+	"time"
 
 	"github.com/KrishRVH/pixel-bonsai/bonsai"
 )
@@ -103,13 +104,18 @@ func (g *Garden) Record(counts map[string]map[string]int64) bool {
 // Accrue hands the selected variety the lifetime tokens counted since the last accrual, and the day's tokens since
 // the last accrual today. The same totals twice add nothing, and smaller ones are ignored. The first accrual on a new
 // local date starts the day afresh and gives the selected variety all of today, since no record says which variety
-// was selected earlier in the day. It reports whether anything changed.
+// was selected earlier in the day. A count of the day before the record's arrives late, as from a pane that counted
+// just before midnight and saved after another started the new day, and leaves the day record alone. It reports
+// whether anything changed.
 func (g *Garden) Accrue(today int64, date string) bool {
 	total := g.Total()
 	grown := max(0, total-g.Counted)
 	g.Grown[g.Variety] += grown
 	g.Counted = max(g.Counted, total)
 	changed := grown > 0
+	if g.Day.follows(date) {
+		return changed
+	}
 	if g.Day.Date != date {
 		g.Day = Day{Date: date, Grown: map[string]int64{}}
 		changed = true
@@ -118,6 +124,12 @@ func (g *Garden) Accrue(today int64, date string) bool {
 	g.Day.Grown[g.Variety] += fresh
 	g.Day.Counted = max(g.Day.Counted, today)
 	return changed || fresh > 0
+}
+
+// follows reports whether the record's date is the day after date.
+func (d Day) follows(date string) bool {
+	t, err := time.Parse(time.DateOnly, d.Date)
+	return err == nil && t.AddDate(0, 0, -1).Format(time.DateOnly) == date
 }
 
 // Choose selects a variety and reports whether the selection changed. It hands out nothing: tokens counted later go

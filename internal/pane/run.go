@@ -28,7 +28,8 @@ type Count struct {
 type Terminal interface {
 	io.Writer
 	Size() (width, height int, err error)
-	Read(buf []byte, timeout time.Duration) (int, error) // 0 bytes and no error when the timeout passes
+	// Read returns 0 bytes and no error when no input arrives by the timeout, and can return so sooner.
+	Read(buf []byte, timeout time.Duration) (int, error)
 	Interactive() bool
 }
 
@@ -56,7 +57,7 @@ func Run(ctx context.Context, t Terminal, store *garden.Store, count func(contex
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	counts := make(chan Count)
-	inputs := make(chan []byte)
+	inputs := make(chan []input)
 	var wg sync.WaitGroup
 	defer func() {
 		cancel()
@@ -87,8 +88,8 @@ func Run(ctx context.Context, t Terminal, store *garden.Store, count func(contex
 			if err := p.counted(c); err != nil {
 				return err
 			}
-		case data := <-inputs:
-			quit, err := p.handle(data)
+		case in := <-inputs:
+			quit, err := p.handle(in)
 			if quit || err != nil {
 				return err
 			}
@@ -116,20 +117,32 @@ func countEvery(ctx context.Context, count func(context.Context) Count, every ti
 	}
 }
 
-// readInput sends what the terminal reads until ctx ends. It waits on input in short slices, so it stops soon after
-// the pane does. A read error means the input is gone; the pane goes on drawing without it.
-func readInput(ctx context.Context, t Terminal, out chan<- []byte) {
+// escapeWait is how long input pauses before an unfinished escape sequence ends, and a lone ESC is the Escape key.
+const escapeWait = 100 * time.Millisecond
+
+// readInput sends the inputs the terminal reads until ctx ends. It waits on input in short slices, so it stops soon
+// after the pane does. A read error means the input is gone; the pane goes on drawing without it.
+func readInput(ctx context.Context, t Terminal, out chan<- []input) {
 	buf := make([]byte, 1024)
+	var d decoder
+	last := time.Now()
 	for ctx.Err() == nil {
-		n, err := t.Read(buf, 100*time.Millisecond)
+		n, err := t.Read(buf, escapeWait)
 		if err != nil {
 			return
 		}
-		if n == 0 {
+		var inputs []input
+		switch {
+		case n > 0:
+			inputs, last = d.decode(buf[:n]), time.Now()
+		case time.Since(last) >= escapeWait: // a read can return nothing early, as when a signal interrupts it
+			inputs = d.idle()
+		}
+		if len(inputs) == 0 {
 			continue
 		}
 		select {
-		case out <- bytes.Clone(buf[:n]):
+		case out <- inputs:
 		case <-ctx.Done():
 			return
 		}
@@ -200,8 +213,8 @@ func (p *pane) counted(c Count) error {
 	})
 }
 
-func (p *pane) handle(data []byte) (quit bool, err error) {
-	a := act(parseInput(data), p.target)
+func (p *pane) handle(inputs []input) (quit bool, err error) {
+	a := act(inputs, p.target)
 	if a.Quit {
 		return true, nil
 	}

@@ -1,6 +1,6 @@
 // Package usage reads the token usage coding agents record on this machine: each supported harness's local logs, and
 // the event feed any other harness can append to. Each source has a [Ledger] that reads incrementally, counts every
-// event once, and totals tokens by UTC day and by quarter hour.
+// call once at the largest count reported for it, and totals tokens by UTC day and by quarter hour.
 package usage
 
 import (
@@ -38,16 +38,24 @@ type reader interface {
 	read(ctx context.Context, add func(event)) (Stats, error)
 }
 
-// A Ledger is one source's usage: every event it has read, once each, by quarter hour. Updates read only what the
-// source added since the last update, so a long-running pane pays for new usage, not for history.
+// A Ledger is one source's usage: every call it has read, once each, by quarter hour. A call reported again with
+// more tokens, as a streamed response is, counts at the larger number. Updates read only what the source added since
+// the last update, so a long-running pane pays for new usage, not for history.
 type Ledger struct {
 	Source string
 
 	reader   reader
-	seen     map[uint64]struct{}
+	calls    map[uint64]call // by a hash of the event key
 	quarters map[int64]int64 // tokens by quarter hour, as Unix seconds / quarter
 	stats    Stats
 	err      error
+}
+
+// A call is what a ledger counted for one event key: the quarter hour of its first event and its largest count. A
+// call stays in that quarter hour because the garden keeps each day's highest total: a call that moved to a later day
+// would count on both.
+type call struct {
+	quarter, tokens int64
 }
 
 // quarter is the bucket ledgers total tokens in. Every time zone's midnight falls on a quarter hour in UTC, so the
@@ -55,7 +63,7 @@ type Ledger struct {
 const quarter = 15 * 60
 
 func newLedger(source string, r reader) *Ledger {
-	return &Ledger{Source: source, reader: r, seen: map[uint64]struct{}{}, quarters: map[int64]int64{}}
+	return &Ledger{Source: source, reader: r, calls: map[uint64]call{}, quarters: map[int64]int64{}}
 }
 
 // Update reads what the source added since the last update. An unreadable or missing source is not an error: it
@@ -76,12 +84,17 @@ func (l *Ledger) add(e event) {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(e.Key)) // hash.Hash writes never fail
 	key := h.Sum64()
-	if _, ok := l.seen[key]; ok {
+	c, seen := l.calls[key]
+	if !seen {
+		c.quarter = floorDiv(e.Time.Unix(), quarter)
+		l.stats.Events++
+	}
+	if e.Tokens <= c.tokens {
 		return
 	}
-	l.seen[key] = struct{}{}
-	l.stats.Events++
-	l.quarters[floorDiv(e.Time.Unix(), quarter)] += e.Tokens
+	l.quarters[c.quarter] += e.Tokens - c.tokens
+	c.tokens = e.Tokens
+	l.calls[key] = c
 }
 
 func floorDiv(a, b int64) int64 {

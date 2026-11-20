@@ -1,6 +1,7 @@
 package pane
 
 import (
+	"bytes"
 	"regexp"
 	"slices"
 	"strings"
@@ -203,37 +204,57 @@ func TestTheAmountIsShort(t *testing.T) {
 	}
 }
 
-func TestInputParsesKeysArrowsAndMouseReports(t *testing.T) {
+func TestInputDecodesKeysArrowsAndMouseReportsAcrossReads(t *testing.T) {
 	t.Parallel()
 	for _, c := range []struct {
-		data string
-		want []input
+		reads []string
+		want  []input
 	}{
-		{"\x1b[C\x1b[D\x1bOC\x1bOD", []input{{Kind: keyRight}, {Kind: keyLeft}, {Kind: keyRight}, {Kind: keyLeft}}},
-		{"\x1b[A\x1b[B\t", []input{{Kind: keyUp}, {Kind: keyDown}, {Kind: keyChar, Char: '\t'}}},
-		{"\x1b[<0;5;20M\x1b[<0;5;20m", []input{{Kind: mouseClick, X: 4, Y: 19}}},
-		{"\x1b[<64;1;1M\x1b[<65;1;1M\x1b[<35;3;3M", []input{{Kind: mouseWheel}, {Kind: mouseWheel}}},
-		{"\x1b[<2;3;4M\x1b[<16;1;1M", []input{{Kind: mouseClick, X: 2, Y: 3}, {Kind: mouseClick}}},     // right, Ctrl+left
-		{"\x1b[M Qa\x1b[M#Qa\x1b[M`!!", []input{{Kind: mouseClick, X: 48, Y: 64}, {Kind: mouseWheel}}}, // X10: press, release, wheel
-		{"\x1b[I\x1b[O\x1b[1;5C", []input{}},
-		{"\x1b", []input{{Kind: keyEscape}}},
-		{"\r\n", []input{{Kind: keyEnter}, {Kind: keyEnter}}},
-		{"é q", []input{{Kind: keyChar, Char: ' '}, {Kind: keyChar, Char: 'q'}}},
+		{[]string{"\x1b[C\x1b[D\x1bOC\x1bOD"}, []input{{Kind: keyRight}, {Kind: keyLeft}, {Kind: keyRight}, {Kind: keyLeft}}},
+		{[]string{"\x1b[A\x1b[B\t"}, []input{{Kind: keyUp}, {Kind: keyDown}, {Kind: keyChar, Char: '\t'}}},
+		{[]string{"\x1b[<0;5;20M\x1b[<0;5;20m"}, []input{{Kind: mouseClick, X: 4, Y: 19}}},
+		{[]string{"\x1b[<64;1;1M\x1b[<65;1;1M\x1b[<35;3;3M"}, []input{{Kind: mouseWheel}, {Kind: mouseWheel}}},
+		{[]string{"\x1b[<2;3;4M\x1b[<16;1;1M"}, []input{{Kind: mouseClick, X: 2, Y: 3}, {Kind: mouseClick}}},     // right, Ctrl+left
+		{[]string{"\x1b[M Qa\x1b[M#Qa\x1b[M`!!"}, []input{{Kind: mouseClick, X: 48, Y: 64}, {Kind: mouseWheel}}}, // X10: press, release, wheel
+		{[]string{"\x1b[I\x1b[O\x1b[1;5C\x1b[15~\x1b[<-1;5;20M"}, nil},
+		{[]string{"\x1bOQ\x1bOP\x1b[[A"}, nil}, // F2 and F1 on the Windows console, and F1 on the Linux console
+		{[]string{"\x1b"}, []input{{Kind: keyEscape}}},
+		{[]string{"\x1b\x1b[C"}, []input{{Kind: keyEscape}, {Kind: keyRight}}},
+		{[]string{"\x1b[1;"}, nil}, // unfinished when input pauses
+		{[]string{"\x1b[", "C"}, []input{{Kind: keyRight}}},
+		{[]string{"\x1b", "OD"}, []input{{Kind: keyLeft}}},
+		{[]string{"\x1b[<0;5", ";20M"}, []input{{Kind: mouseClick, X: 4, Y: 19}}},
+		{[]string{"\x1b[M ", "Qa"}, []input{{Kind: mouseClick, X: 48, Y: 64}}},
+		{[]string{"\r\n"}, []input{{Kind: keyEnter}, {Kind: keyEnter}}},
+		{[]string{"é q"}, []input{{Kind: keyChar, Char: ' '}, {Kind: keyChar, Char: 'q'}}},
 	} {
-		got := parseInput([]byte(c.data))
-		if !slices.Equal(got, c.want) && (len(got) != 0 || len(c.want) != 0) {
-			t.Errorf("parseInput(%q) = %v, want %v", c.data, got, c.want)
+		var d decoder
+		var got []input
+		for _, r := range c.reads {
+			got = append(got, d.decode([]byte(r))...)
+		}
+		got = append(got, d.idle()...) // input pauses
+		if !slices.Equal(got, c.want) {
+			t.Errorf("decode(%q) = %v, want %v", c.reads, got, c.want)
 		}
 	}
 }
 
-func FuzzParseInput(f *testing.F) {
-	for _, seed := range []string{"q", "\x1b[<0;5;20M", "\x1b[<64;99999999999;1M", "\x1b[A\x1bOD", "\x1b[<", "\x1b[1;"} {
-		f.Add([]byte(seed))
+// FuzzDecoder checks that input decodes the same however reads split it.
+func FuzzDecoder(f *testing.F) {
+	for _, seed := range []string{"q", "\x1b[<0;5;20M", "\x1b[<64;99999999999;1M", "\x1b[A\x1bOD", "\x1b[<", "\x1b[1;", "\x1bOQ", "\x1b[M a", "\x1b[[A"} {
+		f.Add([]byte(seed), uint8(2))
 	}
-	f.Fuzz(func(t *testing.T, data []byte) {
-		if inputs := parseInput(data); len(inputs) > len(data) {
-			t.Errorf("%q parsed to %d inputs", data, len(inputs))
+	f.Fuzz(func(t *testing.T, data []byte, cut uint8) {
+		var whole, split decoder
+		want := whole.decode(data)
+		k := int(cut) % (len(data) + 1)
+		got := append(split.decode(data[:k]), split.decode(data[k:])...)
+		if !slices.Equal(got, want) || !bytes.Equal(split.pending, whole.pending) {
+			t.Errorf("%q split at %d decoded to %v and kept %q, whole to %v and kept %q", data, k, got, split.pending, want, whole.pending)
+		}
+		if len(want) > len(data) {
+			t.Errorf("%q decoded to %d inputs", data, len(want))
 		}
 	})
 }

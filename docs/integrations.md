@@ -19,10 +19,11 @@ JSON object on one line:
 | `timestamp` | When the call completed, in RFC 3339 with a time zone offset. A space may stand in for the `T`. |
 | `tokens` | The call's tokens, at least 0: input, output, and cache together, not a running total. |
 
-The bonsai counts each `source` and `id` pair once, so a retried or replayed event adds nothing. A line counts once it
-ends with a newline; a line still being written waits. Every field is required. A line that is not such an object, or
-breaks a rule in the table, is skipped and counted as malformed in `pixel-bonsai doctor`: `tokens` must be a JSON
-integer, and `timestamp` a string. Blank lines and fields the table does not name are ignored.
+The bonsai counts each `source` and `id` pair once, at the first report's `timestamp` and the largest `tokens` reported
+for it, so a replayed event adds nothing and a call can report its count again as it grows. A line counts once it ends
+with a newline; a line still being written waits. Every field is required. A line that is not such an object, or breaks
+a rule in the table, is skipped and counted as malformed in `pixel-bonsai doctor`: `tokens` must be a JSON integer,
+and `timestamp` a string. Blank lines and fields the table does not name are ignored.
 
 The bonsai reads two kinds of feed file:
 

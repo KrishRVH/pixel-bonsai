@@ -136,6 +136,23 @@ func TestTheDayTreeStartsAfreshAtLocalMidnight(t *testing.T) {
 	}
 }
 
+func TestALateCountFromTheDayBeforeLeavesTheDayRecordAlone(t *testing.T) {
+	t.Parallel()
+	g := withHistory()
+	g.Accrue(10, day)
+	g.Choose(maple)
+	g.Accrue(95, "2026-11-18") // one pane counted before midnight and saved after another started the new day
+	g.Accrue(10, day)
+	if g.Tokens(sakura, bonsai.Today, day) != 10 || g.Tokens(maple, bonsai.Today, day) != 0 {
+		t.Errorf("day = %+v, want sakura's 10 tokens of today", g.Day)
+	}
+	g.Accrue(3, "2026-11-25") // a clock set days ahead, then put right
+	g.Accrue(10, day)
+	if g.Day.Date != day {
+		t.Errorf("day = %+v: a record from a clock set ahead held up the day tree", g.Day)
+	}
+}
+
 func TestTheGardenSurvivesARestartAndKeepsUnknownVarieties(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -263,21 +280,25 @@ func TestAFailedReadNeverOverwritesTheGarden(t *testing.T) {
 
 func TestAGardenFromANewerBuildIsLeftAlone(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "garden.json")
-	newer := []byte(`{"schema":99,"variety":"redwood"}`)
-	if err := os.WriteFile(path, newer, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	store := garden.Open(dir)
-	if _, err := store.Load(); !errors.Is(err, garden.ErrNewer) {
-		t.Errorf("load error = %v, want ErrNewer", err)
-	}
-	if _, err := store.Update(func(g *garden.Garden) bool { return g.Choose(maple) }); !errors.Is(err, garden.ErrNewer) {
-		t.Errorf("update error = %v, want ErrNewer", err)
-	}
-	if data, _ := os.ReadFile(path); !bytes.Equal(data, newer) { // #nosec G304 -- A test's own temporary file.
-		t.Error("the newer garden was overwritten")
+	for _, newer := range []string{
+		`{"schema":99,"variety":"redwood"}`,
+		`{"schema":99,"grown":[]}`, // a field this build cannot decode
+	} {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "garden.json")
+		if err := os.WriteFile(path, []byte(newer), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		store := garden.Open(dir)
+		if _, err := store.Load(); !errors.Is(err, garden.ErrNewer) {
+			t.Errorf("%s: load error = %v, want ErrNewer", newer, err)
+		}
+		if _, err := store.Update(func(g *garden.Garden) bool { return g.Choose(maple) }); !errors.Is(err, garden.ErrNewer) {
+			t.Errorf("%s: update error = %v, want ErrNewer", newer, err)
+		}
+		if data, _ := os.ReadFile(path); !bytes.Equal(data, []byte(newer)) { // #nosec G304 -- A test's own temporary file.
+			t.Errorf("%s: the newer garden was overwritten", newer)
+		}
 	}
 }
 

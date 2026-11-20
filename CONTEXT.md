@@ -5,7 +5,7 @@ the code, tests, and docs use.
 
 ## Trees
 
-- **Variety**: a kind of tree with its own drawing, palette, and growth: `sakura`, `maple`, or `black-pine`. A
+- **Variety**: a kind of tree with its own drawing, palette, and growth, such as `sakura` or `black-pine`. A
   variety is an `art.Variety`, drawn by one package under `bonsai/`.
 - **Age** or **growth**: a tree's maturity, `g`, from 0 (a seed) to 1 (venerable). A drawing is a function of age and
   scale alone.
@@ -31,8 +31,8 @@ the code, tests, and docs use.
 - **Source**: where usage comes from: a harness whose logs the bonsai reads natively, or the event feed.
 - **Event**: one model call's tokens and when it completed, with a **key** that identifies the call within its
   source, so a retried, resumed, or copied call counts once.
-- **Ledger**: one source's events, counted once each and totaled by quarter hour. A ledger reads only what its source
-  added since its last read.
+- **Ledger**: one source's events, counted once for each key, at the largest count reported for it, and totaled by
+  quarter hour. A ledger reads only what its source added since its last read.
 - **Event feed**: JSON lines any harness writes, directly or with `pixel-bonsai record`.
 
 ## Garden

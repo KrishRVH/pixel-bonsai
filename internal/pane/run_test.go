@@ -101,9 +101,12 @@ func TestThePaneGrowsTheTreeAndSwitchesItUntilQuit(t *testing.T) {
 	store := garden.Open(t.TempDir())
 	done := start(t.Context(), t, term, store, noon)
 	term.waitFor(t, "🌸 sakura · seed · 40 tokens · today ⇄")
-	term.keys <- []byte("\x1b[D") // left from the first variety wraps round to the last
+	term.keys <- []byte("\x1b[") // a left arrow split across reads; from the first variety it wraps round to the last
+	term.keys <- []byte{}        // a read that returns nothing early, as when a signal interrupts it
+	term.keys <- []byte("D")
 	term.waitFor(t, "black pine")
-	term.keys <- []byte("v ")
+	term.keys <- []byte("v")
+	term.keys <- []byte("\x1b") // Escape, once input pauses
 	term.waitFor(t, "🌸 sakura · seed · 500 tokens · lifetime ⇄")
 	term.mu.Lock()
 	term.width, term.height = 100, 40

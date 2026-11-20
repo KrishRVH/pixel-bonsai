@@ -60,11 +60,11 @@ and an add on processors such as arm64.
 ## Change the art
 
 1. Edit the variety's package under `bonsai/`.
-2. Look at the result: `go run . sheet artifacts/sheets <variety>` writes PNG contact sheets of every stage, the
-   reference day and lifetime trees, and three scales.
-3. Run `go test ./bonsai/...`. The conformance tests in `bonsai/bonsai_test.go` hold every variety to the same
-   bar: each stage shows something new, pixels stay on the canvas and repeat exactly, a larger scale draws more
-   detail, the tree grows with age, varieties stay distinct, and each shows its signature color small.
+2. Look at the result: `mise run sheets <variety>` writes PNG contact sheets of every stage, the reference day and
+   lifetime trees, and three scales to `artifacts/sheets`.
+3. Run `mise run test`. The conformance tests in `bonsai/bonsai_test.go` hold every variety to the same bar: each
+   stage shows something new, pixels stay on the canvas and repeat exactly, a larger scale draws more detail, the tree
+   grows with age, varieties stay distinct, and each shows its signature color small.
 4. Run `mise run docs:images` to redraw the README's pictures.
 
 ## Add a variety
@@ -73,14 +73,16 @@ and an add on processors such as arm64.
    signature colors, and the draw function. Start from the variety closest to the new one.
 2. Add it to `bonsai.Varieties()` at its place in the switch order.
 3. Run the conformance tests and look at the sheets.
-4. Add it to the `docs:images` task and to the row of trees in `README.md`.
+4. Add it to the `docs:images` task, the row of trees in `README.md`, and the `--variety` row in
+   `docs/integrations.md`.
 
 ## Add a harness
 
 1. Add `internal/usage/<harness>.go`. For JSONL logs, write a function that finds the files and a `lineParser` that
    turns a line into an `event`; the tailer reads only new lines. For a SQLite database, implement `reader`
    with `databases` from `sqlite.go`, as `goose.go` does; for any other store, implement `reader` directly. Choose
-   the event key so that a retried, resumed, forked, or copied call keeps its key.
+   the event key so that a retried, resumed, forked, or copied call keeps its key. The ledger counts each key once, at
+   its largest count.
 2. Add it to `usage.New`. The order there is the order `doctor` reports.
 3. Add a fixture test to `internal/usage/usage_test.go`, and a seed line to `FuzzParsers`.
 4. Add it to the table in `docs/harnesses.md`, its name to the list in `README.md`, and its environment variables to

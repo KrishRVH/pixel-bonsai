@@ -129,6 +129,29 @@ func TestClaudeCountsEachMessageOnceAndKeepsWhatWasPruned(t *testing.T) {
 	}
 }
 
+// streamed returns a line of a streamed Claude response, with the usage known when the line was written.
+func streamed(when string, output int64, stop string) string {
+	return fmt.Sprintf(`{"type":"assistant","requestId":"r1","timestamp":%q,"message":{"id":"m1","stop_reason":%s,`+
+		`"usage":{"input_tokens":2,"cache_creation_input_tokens":26140,"cache_read_input_tokens":18036,"output_tokens":%d}}}`, when, stop, output)
+}
+
+func TestClaudeCountsAStreamedMessageAtItsFinalUsage(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	rel := ".claude/projects/p/a.jsonl"
+	start, end := "2026-11-10T23:59:58Z", "2026-11-11T00:00:04Z"
+	f.append(rel, streamed(start, 8, "null")) // the response's first block, with the output so far
+	l := f.ledger("claude")
+	f.append(rel, streamed(end, 251, `"tool_use"`))
+	f.append(".claude/projects/p/resumed.jsonl", streamed(start, 8, "null"))
+	if want := map[string]int64{day1: 2 + 26140 + 18036 + 251}; !maps.Equal(update(t, l).Days(), want) {
+		t.Errorf("days = %v, want %v: a message counts at its final usage, read later or copied, on the day it began", l.Days(), want)
+	}
+	if stats, _ := l.Stats(); stats.Events != 1 {
+		t.Errorf("events = %d, want 1", stats.Events)
+	}
+}
+
 func TestALedgerReadsOnlyWhatWasAppended(t *testing.T) {
 	t.Parallel()
 	f := newFixture(t)
@@ -441,6 +464,12 @@ func TestTheEventFeedTakesAnyHarnessOnceEach(t *testing.T) {
 	f.append("extra.jsonl", `{"source":"my-tool","id":"next","tokens":7,"timestamp":"`+stamp+`"}`)
 	if got := total(update(t, l).Days()); got != 82 {
 		t.Errorf("total = %d, want 82", got)
+	}
+	f.append("extra.jsonl",
+		`{"source":"my-tool","id":"next","tokens":9,"timestamp":"`+stamp+`"}`,
+		`{"source":"my-tool","id":"next","tokens":2,"timestamp":"`+stamp+`"}`)
+	if got := total(update(t, l).Days()); got != 84 {
+		t.Errorf("total = %d, want 84: a call counts at the largest count it reports", got)
 	}
 	if stats, _ := l.Stats(); stats.Malformed != 11 {
 		t.Errorf("malformed = %d, want 11: every line that breaks the feed's format, and no blank one", stats.Malformed)

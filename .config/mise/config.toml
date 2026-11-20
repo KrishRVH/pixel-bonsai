@@ -44,6 +44,11 @@ for stage in seedling:0.04 first-branches:0.2 shaped:0.4 established:0.65 venera
 done
 """
 
+[tasks.sheets]
+description = "Write contact sheets of every stage to artifacts/sheets"
+usage = 'arg "[variety]" help="One variety; every variety when left out"'
+run = 'go run . sheet artifacts/sheets ${usage_variety:-}'
+
 [tasks."go:vet:cross"]
 description = "Vet the Windows and macOS builds"
 run = ["GOOS=windows go vet ./...", "GOOS=darwin go vet ./..."]
